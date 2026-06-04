@@ -1,0 +1,14 @@
+ref/
+packages/opencode/dist/
+node_modules/
+*.mp4
+packages/console/
+packages/desktop/
+packages/web/
+packages/docs/
+packages/enterprise/
+packages/function/
+packages/slack/
+packages/stats/
+packages/storybook/
+packages/containers/
