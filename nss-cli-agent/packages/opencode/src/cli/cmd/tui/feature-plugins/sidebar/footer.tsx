@@ -15,7 +15,7 @@ function View(props: { api: TuiPluginApi }) {
   const done = createMemo(() => props.api.kv.get("dismissed_getting_started", false))
   const show = createMemo(() => !has() && !done())
   const path = createMemo(() => {
-    const dir = props.api.state.path.directory || process.cwd()
+    const dir = process.env.PWD || props.api.state.path.directory || process.cwd()
     const out = dir.replace(Global.Path.home, "~")
     const text = props.api.state.vcs?.branch ? out + ":" + props.api.state.vcs.branch : out
     const list = text.split("/")
