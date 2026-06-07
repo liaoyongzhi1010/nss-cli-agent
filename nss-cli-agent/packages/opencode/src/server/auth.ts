@@ -37,7 +37,7 @@ export function header(credentials?: Credentials) {
   const password = credentials?.password ?? Flag.OPENCODE_SERVER_PASSWORD
   if (!password) return undefined
 
-  const username = credentials?.username ?? Flag.NSS_CLI_SERVER_USERNAME ?? "nss-cli"
+  const username = credentials?.username ?? Flag.OPENCODE_SERVER_USERNAME ?? "nss-cli"
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
 }
 

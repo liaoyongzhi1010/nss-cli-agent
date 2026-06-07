@@ -2,6 +2,7 @@ ref/
 packages/opencode/dist/
 node_modules/
 *.mp4
+.nss/
 packages/console/
 packages/desktop/
 packages/web/

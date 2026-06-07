@@ -1,0 +1,172 @@
+{
+  "modules": [
+    {
+      "id": "crypto",
+      "name": "密码学基础（含 PKI/TLS）",
+      "exercises": [
+        {
+          "id": "crypto-basic",
+          "tier": "basic",
+          "title": "对称/公钥/哈希/签名：正确使用与误用识别"
+        },
+        {
+          "id": "crypto-inter",
+          "tier": "intermediate",
+          "title": "PKI 证书链与 TLS 握手抓包分析"
+        },
+        {
+          "id": "crypto-adv",
+          "tier": "challenge",
+          "title": "MITM 构造与信任链失效分析"
+        }
+      ]
+    },
+    {
+      "id": "web-sec",
+      "name": "Web 安全",
+      "exercises": [
+        {
+          "id": "web-sec-basic",
+          "tier": "basic",
+          "title": "SQLi/XSS/CSRF 复现与最小修复"
+        },
+        {
+          "id": "web-sec-inter",
+          "tier": "intermediate",
+          "title": "容器化部署 + 日志审计与防护配置"
+        },
+        {
+          "id": "web-sec-adv",
+          "tier": "challenge",
+          "title": "多框架/多配置变体：对比防护效果与代价"
+        }
+      ]
+    },
+    {
+      "id": "os-sec",
+      "name": "操作系统安全",
+      "exercises": [
+        {
+          "id": "os-sec-basic",
+          "tier": "basic",
+          "title": "权限边界与 Set-UID：安全配置与风险点"
+        },
+        {
+          "id": "os-sec-inter",
+          "tier": "intermediate",
+          "title": "环境变量/命令注入：复现与防护"
+        },
+        {
+          "id": "os-sec-adv",
+          "tier": "challenge",
+          "title": "TOCTOU 竞态条件：机制理解 + 证据链"
+        }
+      ]
+    },
+    {
+      "id": "db-sec",
+      "name": "数据库安全",
+      "exercises": [
+        {
+          "id": "db-sec-basic",
+          "tier": "basic",
+          "title": "注入风险与最小权限原则"
+        },
+        {
+          "id": "db-sec-inter",
+          "tier": "intermediate",
+          "title": "账号权限/备份/日志泄露/凭据管理"
+        },
+        {
+          "id": "db-sec-adv",
+          "tier": "challenge",
+          "title": "功能需求→安全约束：配置方案设计与验证"
+        }
+      ]
+    },
+    {
+      "id": "sw-sec",
+      "name": "软件安全",
+      "exercises": [
+        {
+          "id": "sw-sec-basic",
+          "tier": "basic",
+          "title": "缓冲区溢出/格式化字符串：漏洞机理"
+        },
+        {
+          "id": "sw-sec-inter",
+          "tier": "intermediate",
+          "title": "ASLR/Canary/NX 防护机制对比验证"
+        },
+        {
+          "id": "sw-sec-adv",
+          "tier": "challenge",
+          "title": "给定二进制与约束：最小复现 + 关键步骤解释"
+        }
+      ]
+    },
+    {
+      "id": "net-sec",
+      "name": "网络安全",
+      "exercises": [
+        {
+          "id": "net-sec-basic",
+          "tier": "basic",
+          "title": "嗅探与伪造：DNS/TCP 典型攻击"
+        },
+        {
+          "id": "net-sec-inter",
+          "tier": "intermediate",
+          "title": "防火墙策略探索 + VPN 机制与验证"
+        },
+        {
+          "id": "net-sec-adv",
+          "tier": "challenge",
+          "title": "容器化拓扑注入网络条件：评估协议鲁棒性"
+        }
+      ]
+    },
+    {
+      "id": "tpm",
+      "name": "可信计算（TPM/TCM）",
+      "exercises": [
+        {
+          "id": "tpm-basic",
+          "tier": "basic",
+          "title": "PCR 度量/对象概念/工具链入门"
+        },
+        {
+          "id": "tpm-inter",
+          "tier": "intermediate",
+          "title": "密封/解封/策略绑定（状态绑定密钥）"
+        },
+        {
+          "id": "tpm-adv",
+          "tier": "challenge",
+          "title": "最小远程证明闭环：Quote/Verify 语义分析"
+        }
+      ]
+    },
+    {
+      "id": "tee",
+      "name": "机密计算（TEE：OP-TEE on QEMU）",
+      "exercises": [
+        {
+          "id": "tee-basic",
+          "tier": "basic",
+          "title": "环境部署与基本示例跑通"
+        },
+        {
+          "id": "tee-inter",
+          "tier": "intermediate",
+          "title": "CA-TA 调用链路 + 共享内存与边界分析"
+        },
+        {
+          "id": "tee-adv",
+          "tier": "challenge",
+          "title": "关键步骤入 TA：敏感数据生命周期与最小暴露证据"
+        }
+      ]
+    }
+  ]
+}

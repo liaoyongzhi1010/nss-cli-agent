@@ -34,6 +34,10 @@ import { SyncProvider, useSync } from "@tui/context/sync"
 import { SyncProviderV2 } from "@tui/context/sync-v2"
 import { LocalProvider, useLocal } from "@tui/context/local"
 import { DialogModel } from "@tui/component/dialog-model"
+import { DialogLesson } from "@tui/component/dialog-lesson"
+import { DialogLessonActions } from "@tui/component/dialog-lesson-actions"
+import { useLesson } from "@tui/component/use-lesson"
+import { initLesson, getLessonDir, shortenHome } from "@tui/component/lab-init"
 import { useConnected } from "@tui/component/use-connected"
 import { DialogMcp } from "@tui/component/dialog-mcp"
 import { DialogStatus } from "@tui/component/dialog-status"
@@ -635,6 +639,54 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         slashName: "models",
         run: () => {
           dialog.replace(() => <DialogModel />)
+        },
+      },
+      {
+        name: "lesson.show",
+        title: "选择实验",
+        suggested: true,
+        category: "Agent",
+        slashName: "lesson",
+        run: () => {
+          const lesson = useLesson()
+          const showActions = () => {
+            dialog.replace(() => (
+              <DialogLessonActions
+                onInit={async (sel) => {
+                  const cwd = process.env.PWD || process.cwd()
+                  const result = await initLesson(cwd, sel)
+                  if (result.created) {
+                    toast.show({ title: "实验已初始化", message: shortenHome(result.dir), variant: "success" })
+                  } else {
+                    toast.show({ title: "跳过", message: `已存在：${shortenHome(result.dir)}`, variant: "info" })
+                  }
+                }}
+                onVerify={(sel) => {
+                  const dir = getLessonDir(process.env.PWD || process.cwd(), sel)
+                  promptRef.current?.set({
+                    input: `请查看 ${dir}/README.md 中的验收标准，检查该目录下学生的实验代码是否满足要求。逐项列出验收结果（通过/未通过），给出改进建议。`,
+                    parts: [],
+                  })
+                  promptRef.current?.submit()
+                }}
+                onReport={(sel) => {
+                  const dir = getLessonDir(process.env.PWD || process.cwd(), sel)
+                  promptRef.current?.set({
+                    input: `请基于 ${dir}/README.md 中的实验要求和验收标准，为实验「${sel.title}」生成结构化实验报告草稿，输出为 ${dir}/report.md。报告包含：1.威胁模型与边界条件 2.关键参数选择依据 3.实现要点 4.验证证据 5.结论。其中验证证据基于目录中实际代码产出填写，其余部分生成初稿提示学生补全。`,
+                    parts: [],
+                  })
+                  promptRef.current?.submit()
+                }}
+              />
+            ))
+          }
+          if (lesson.selected()) {
+            showActions()
+          } else {
+            dialog.replace(() => (
+              <DialogLesson onSelect={() => showActions()} />
+            ))
+          }
         },
       },
       {
