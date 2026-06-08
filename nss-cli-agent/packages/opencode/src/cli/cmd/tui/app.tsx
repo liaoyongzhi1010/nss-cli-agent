@@ -45,6 +45,7 @@ import {
   parseStudentInfo,
   startEvidenceRun,
   submitEvidence,
+  writeSignedReportDraft,
 } from "@tui/component/lab-evidence"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { useConnected } from "@tui/component/use-connected"
@@ -695,8 +696,10 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                       files,
                     })
                     const signatureBlock = evidenceAppendix(uploaded)
+                    await writeSignedReportDraft({ dir, title: sel.title, meta, files, signature: uploaded })
+                    toast.show({ title: "报告已生成", message: shortenHome(`${dir}/report.md`), variant: "success" })
                     promptRef.current?.set({
-                      input: `请为实验「${sel.title}」生成实验报告，输出到 ${dir}/report.md。必须使用并保留以下服务器证据签名块：\n${signatureBlock}\n\n生成步骤如下：\n\n1. 学生姓名：${meta.student.name}；学号：${meta.student.id}。\n2. 自动采集环境信息：运行 \`uname -a\`、\`sw_vers 2>/dev/null || lsb_release -a 2>/dev/null\`、\`sysctl -n machdep.cpu.brand_string 2>/dev/null || cat /proc/cpuinfo | grep "model name" | head -1\` 获取操作系统、CPU 信息；运行 \`date\` 获取当前时间。\n3. 列出 ${dir}/ 目录下学生编写的所有代码文件，并使用以下已上传的文件证据清单：${JSON.stringify(files)}。\n4. 根据本次对话历史，整理学生完成实验的操作时间线（关键步骤 + 大致时间）。\n5. 按以下结构写入 ${dir}/report.md：\n\n# 实验报告：${sel.title}\n\n## 基本信息\n- 姓名：${meta.student.name}\n- 学号：${meta.student.id}\n- 实验开始时间：${meta.serverStartedAt}\n- 实验结束时间：填写报告生成时的当前时间\n- 电脑配置：操作系统 / CPU / 架构\n\n## 实验目标\n（摘自 ${dir}/README.md）\n\n## 操作时间线\n（按时间顺序列出学生完成实验的关键步骤）\n\n## 代码文件清单\n（列出目录下的代码文件、大小、SHA256 和简要说明）\n\n## 实现要点（从抽象到代码的映射）\n（根据学生代码总结，需学生确认补全）\n\n## 遇到的问题与解决\n（根据对话历史整理）\n\n## 结论与反思\n（提示学生补全）\n\n${signatureBlock}\n\n注意：服务器证据签名块必须原样写入 report.md；学生可以补充报告文字，但签名块以服务器记录为准。`,
+                      input: `请基于 ${dir}/report.md 继续完善实验报告正文。必须保留以下服务器证据签名块，不得修改其中任何字段：\n${signatureBlock}\n\n请补充：实验目标、操作时间线、实现要点、遇到的问题与解决、结论与反思。`,
                       parts: [],
                     })
                     promptRef.current?.submit()
