@@ -27,8 +27,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "crypto-inter": `# 密码学基础 · [进阶] PKI 证书链与 TLS 握手抓包分析
@@ -52,8 +51,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "crypto-adv": `# 密码学基础 · [挑战] MITM 构造与信任链失效分析
@@ -77,8 +75,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "web-sec-basic": `# Web 安全 · [基础] SQLi/XSS/CSRF 复现与最小修复
@@ -102,8 +99,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "web-sec-inter": `# Web 安全 · [进阶] 容器化部署 + 日志审计与防护配置
@@ -127,8 +123,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "web-sec-adv": `# Web 安全 · [挑战] 多框架/多配置变体：对比防护效果与代价
@@ -152,8 +147,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "os-sec-basic": `# 操作系统安全 · [基础] 权限边界与 Set-UID：安全配置与风险点
@@ -177,8 +171,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "os-sec-inter": `# 操作系统安全 · [进阶] 环境变量/命令注入：复现与防护
@@ -202,8 +195,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "os-sec-adv": `# 操作系统安全 · [挑战] TOCTOU 竞态条件：机制理解 + 证据链
@@ -227,8 +219,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "db-sec-basic": `# 数据库安全 · [基础] 注入风险与最小权限原则
@@ -252,8 +243,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "db-sec-inter": `# 数据库安全 · [进阶] 账号权限/备份/日志泄露/凭据管理
@@ -277,8 +267,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "db-sec-adv": `# 数据库安全 · [挑战] 功能需求→安全约束：配置方案设计与验证
@@ -302,8 +291,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "sw-sec-basic": `# 软件安全 · [基础] 缓冲区溢出/格式化字符串：漏洞机理
@@ -328,8 +316,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "sw-sec-inter": `# 软件安全 · [进阶] ASLR/Canary/NX 防护机制对比验证
@@ -355,8 +342,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "sw-sec-adv": `# 软件安全 · [挑战] 给定二进制与约束：最小复现 + 关键步骤解释
@@ -380,8 +366,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "net-sec-basic": `# 网络安全 · [基础] 嗅探与伪造：DNS/TCP 典型攻击
@@ -405,8 +390,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "net-sec-inter": `# 网络安全 · [进阶] 防火墙策略探索 + VPN 机制与验证
@@ -430,8 +414,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "net-sec-adv": `# 网络安全 · [挑战] 容器化拓扑注入网络条件：评估协议鲁棒性
@@ -455,8 +438,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "tpm-basic": `# 可信计算 · [基础] PCR 度量/对象概念/工具链入门
@@ -480,8 +462,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "tpm-inter": `# 可信计算 · [进阶] 密封/解封/策略绑定（状态绑定密钥）
@@ -505,8 +486,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "tpm-adv": `# 可信计算 · [挑战] 最小远程证明闭环：Quote/Verify 语义分析
@@ -530,8 +510,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "tee-basic": `# 机密计算 · [基础] 环境部署与基本示例跑通
@@ -555,8 +534,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "tee-inter": `# 机密计算 · [进阶] CA-TA 调用链路 + 共享内存与边界分析
@@ -580,8 +558,7 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 
   "tee-adv": `# 机密计算 · [挑战] 关键步骤入 TA：敏感数据生命周期与最小暴露证据
@@ -605,7 +582,6 @@ export const labReadmes: Record<string, string> = {
 
 ## 提示
 
-- 运行 /verify 让智能体检查你的实现是否满足验收标准。
-- 运行 /report 生成实验报告草稿。
+- 在 /lesson 的操作列表中选择「生成报告」，生成包含过程证据和服务器签名的实验报告。
 `,
 }

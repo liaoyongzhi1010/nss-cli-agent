@@ -38,6 +38,15 @@ import { DialogLesson } from "@tui/component/dialog-lesson"
 import { DialogLessonActions } from "@tui/component/dialog-lesson-actions"
 import { useLesson } from "@tui/component/use-lesson"
 import { initLesson, getLessonDir, shortenHome } from "@tui/component/lab-init"
+import {
+  collectFileEvidence,
+  evidenceAppendix,
+  loadEvidenceMeta,
+  parseStudentInfo,
+  startEvidenceRun,
+  submitEvidence,
+} from "@tui/component/lab-evidence"
+import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { useConnected } from "@tui/component/use-connected"
 import { DialogMcp } from "@tui/component/dialog-mcp"
 import { DialogStatus } from "@tui/component/dialog-status"
@@ -654,54 +663,48 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
               <DialogLessonActions
                 onInit={async (sel) => {
                   const cwd = process.env.PWD || process.cwd()
+                  const input = await DialogPrompt.show(dialog, "学生信息", {
+                    placeholder: "请输入姓名和学号，例如：张三 20240001",
+                  })
+                  if (!input) return
+                  const student = parseStudentInfo(input)
+                  if (!student) {
+                    toast.show({ title: "格式错误", message: "请输入：姓名 学号", variant: "warning" })
+                    return
+                  }
                   const result = await initLesson(cwd, sel)
-                  if (result.created) {
+                  try {
+                    await startEvidenceRun(cwd, sel, student)
                     toast.show({ title: "实验已初始化", message: shortenHome(result.dir), variant: "success" })
-                  } else {
-                    toast.show({ title: "跳过", message: `已存在：${shortenHome(result.dir)}`, variant: "info" })
+                  } catch (err) {
+                    toast.error(err)
                   }
                 }}
-                onReport={(sel) => {
-                  const dir = getLessonDir(process.env.PWD || process.cwd(), sel)
-                  promptRef.current?.set({
-                    input: `请为实验「${sel.title}」生成实验报告，输出到 ${dir}/report.md。生成步骤如下：
-
-1. 若你还不知道学生的姓名和学号，先询问学生（必填，报告需要署名）。
-2. 自动采集环境信息：运行 \`uname -a\`、\`sw_vers 2>/dev/null || lsb_release -a 2>/dev/null\`、\`sysctl -n machdep.cpu.brand_string 2>/dev/null || cat /proc/cpuinfo | grep "model name" | head -1\` 获取操作系统、CPU 信息；运行 \`date\` 获取当前时间。
-3. 列出 ${dir}/ 目录下学生编写的所有代码文件（运行 \`ls -la ${dir}\`）。
-4. 根据本次对话历史，整理学生完成实验的操作时间线（关键步骤 + 大致时间）。
-5. 按以下结构写入 ${dir}/report.md：
-
-# 实验报告：${sel.title}
-
-## 基本信息
-- 姓名：
-- 学号：
-- 实验开始时间 / 结束时间：
-- 电脑配置：操作系统 / CPU / 架构
-
-## 实验目标
-（摘自 ${dir}/README.md）
-
-## 操作时间线
-（按时间顺序列出学生完成实验的关键步骤）
-
-## 代码文件清单
-（列出目录下的代码文件及简要说明）
-
-## 实现要点（从抽象到代码的映射）
-（根据学生代码总结，需学生确认补全）
-
-## 遇到的问题与解决
-（根据对话历史整理）
-
-## 结论与反思
-（提示学生补全）
-
-注意：姓名、学号必须由学生提供；环境信息和时间线由你采集填写；理解性内容生成初稿后提示学生补全。`,
-                    parts: [],
-                  })
-                  promptRef.current?.submit()
+                onReport={async (sel) => {
+                  const cwd = process.env.PWD || process.cwd()
+                  const dir = getLessonDir(cwd, sel)
+                  const meta = await loadEvidenceMeta(cwd, sel)
+                  if (!meta) {
+                    toast.show({ title: "缺少证据记录", message: "请先初始化实验并填写姓名学号", variant: "warning" })
+                    return
+                  }
+                  try {
+                    const files = await collectFileEvidence(dir)
+                    const draft = `# 实验报告：${sel.title}\n\n生成中，请根据对话历史补全。`
+                    const uploaded = await submitEvidence(meta, {
+                      report_markdown: draft,
+                      timeline: [{ time: new Date().toISOString(), event: "生成实验报告" }],
+                      files,
+                    })
+                    const signatureBlock = evidenceAppendix(uploaded)
+                    promptRef.current?.set({
+                      input: `请为实验「${sel.title}」生成实验报告，输出到 ${dir}/report.md。必须使用并保留以下服务器证据签名块：\n${signatureBlock}\n\n生成步骤如下：\n\n1. 学生姓名：${meta.student.name}；学号：${meta.student.id}。\n2. 自动采集环境信息：运行 \`uname -a\`、\`sw_vers 2>/dev/null || lsb_release -a 2>/dev/null\`、\`sysctl -n machdep.cpu.brand_string 2>/dev/null || cat /proc/cpuinfo | grep "model name" | head -1\` 获取操作系统、CPU 信息；运行 \`date\` 获取当前时间。\n3. 列出 ${dir}/ 目录下学生编写的所有代码文件，并使用以下已上传的文件证据清单：${JSON.stringify(files)}。\n4. 根据本次对话历史，整理学生完成实验的操作时间线（关键步骤 + 大致时间）。\n5. 按以下结构写入 ${dir}/report.md：\n\n# 实验报告：${sel.title}\n\n## 基本信息\n- 姓名：${meta.student.name}\n- 学号：${meta.student.id}\n- 实验开始时间：${meta.serverStartedAt}\n- 实验结束时间：填写报告生成时的当前时间\n- 电脑配置：操作系统 / CPU / 架构\n\n## 实验目标\n（摘自 ${dir}/README.md）\n\n## 操作时间线\n（按时间顺序列出学生完成实验的关键步骤）\n\n## 代码文件清单\n（列出目录下的代码文件、大小、SHA256 和简要说明）\n\n## 实现要点（从抽象到代码的映射）\n（根据学生代码总结，需学生确认补全）\n\n## 遇到的问题与解决\n（根据对话历史整理）\n\n## 结论与反思\n（提示学生补全）\n\n${signatureBlock}\n\n注意：服务器证据签名块必须原样写入 report.md；学生可以补充报告文字，但签名块以服务器记录为准。`,
+                      parts: [],
+                    })
+                    promptRef.current?.submit()
+                  } catch (err) {
+                    toast.error(err)
+                  }
                 }}
               />
             ))
