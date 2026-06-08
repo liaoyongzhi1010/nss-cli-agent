@@ -4,7 +4,6 @@ import { useLesson, type SelectedLesson } from "./use-lesson"
 
 interface Props {
   onInit: (sel: SelectedLesson) => void
-  onVerify: (sel: SelectedLesson) => void
   onReport: (sel: SelectedLesson) => void
 }
 
@@ -15,8 +14,7 @@ export function DialogLessonActions(props: Props) {
 
   const options = [
     { title: "初始化实验", value: "init" as const, description: "在当前目录创建实验文件夹和 README" },
-    { title: "验证实验", value: "verify" as const, description: "检查实验代码是否满足验收标准" },
-    { title: "生成报告", value: "report" as const, description: "基于验收标准生成实验报告草稿" },
+    { title: "生成报告", value: "report" as const, description: "记录开发过程并生成实验报告" },
   ]
 
   return (
@@ -28,9 +26,6 @@ export function DialogLessonActions(props: Props) {
         switch (opt.value) {
           case "init":
             props.onInit(sel)
-            break
-          case "verify":
-            props.onVerify(sel)
             break
           case "report":
             props.onReport(sel)

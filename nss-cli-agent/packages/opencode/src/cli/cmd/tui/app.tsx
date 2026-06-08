@@ -661,18 +661,44 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                     toast.show({ title: "跳过", message: `已存在：${shortenHome(result.dir)}`, variant: "info" })
                   }
                 }}
-                onVerify={(sel) => {
-                  const dir = getLessonDir(process.env.PWD || process.cwd(), sel)
-                  promptRef.current?.set({
-                    input: `请查看 ${dir}/README.md 中的验收标准，检查该目录下学生的实验代码是否满足要求。逐项列出验收结果（通过/未通过），给出改进建议。`,
-                    parts: [],
-                  })
-                  promptRef.current?.submit()
-                }}
                 onReport={(sel) => {
                   const dir = getLessonDir(process.env.PWD || process.cwd(), sel)
                   promptRef.current?.set({
-                    input: `请基于 ${dir}/README.md 中的实验要求和验收标准，为实验「${sel.title}」生成结构化实验报告草稿，输出为 ${dir}/report.md。报告包含：1.威胁模型与边界条件 2.关键参数选择依据 3.实现要点 4.验证证据 5.结论。其中验证证据基于目录中实际代码产出填写，其余部分生成初稿提示学生补全。`,
+                    input: `请为实验「${sel.title}」生成实验报告，输出到 ${dir}/report.md。生成步骤如下：
+
+1. 若你还不知道学生的姓名和学号，先询问学生（必填，报告需要署名）。
+2. 自动采集环境信息：运行 \`uname -a\`、\`sw_vers 2>/dev/null || lsb_release -a 2>/dev/null\`、\`sysctl -n machdep.cpu.brand_string 2>/dev/null || cat /proc/cpuinfo | grep "model name" | head -1\` 获取操作系统、CPU 信息；运行 \`date\` 获取当前时间。
+3. 列出 ${dir}/ 目录下学生编写的所有代码文件（运行 \`ls -la ${dir}\`）。
+4. 根据本次对话历史，整理学生完成实验的操作时间线（关键步骤 + 大致时间）。
+5. 按以下结构写入 ${dir}/report.md：
+
+# 实验报告：${sel.title}
+
+## 基本信息
+- 姓名：
+- 学号：
+- 实验开始时间 / 结束时间：
+- 电脑配置：操作系统 / CPU / 架构
+
+## 实验目标
+（摘自 ${dir}/README.md）
+
+## 操作时间线
+（按时间顺序列出学生完成实验的关键步骤）
+
+## 代码文件清单
+（列出目录下的代码文件及简要说明）
+
+## 实现要点（从抽象到代码的映射）
+（根据学生代码总结，需学生确认补全）
+
+## 遇到的问题与解决
+（根据对话历史整理）
+
+## 结论与反思
+（提示学生补全）
+
+注意：姓名、学号必须由学生提供；环境信息和时间线由你采集填写；理解性内容生成初稿后提示学生补全。`,
                     parts: [],
                   })
                   promptRef.current?.submit()

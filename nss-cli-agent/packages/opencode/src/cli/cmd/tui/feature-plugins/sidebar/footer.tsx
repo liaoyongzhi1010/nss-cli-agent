@@ -17,8 +17,7 @@ function View(props: { api: TuiPluginApi }) {
   const path = createMemo(() => {
     const dir = process.env.PWD || props.api.state.path.directory || process.cwd()
     const out = dir.replace(Global.Path.home, "~")
-    const text = props.api.state.vcs?.branch ? out + ":" + props.api.state.vcs.branch : out
-    const list = text.split("/")
+    const list = out.split("/")
     return {
       parent: list.slice(0, -1).join("/"),
       name: list.at(-1) ?? "",
