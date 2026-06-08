@@ -663,30 +663,28 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
               <DialogLessonActions
                 onInit={async (sel) => {
                   const cwd = process.env.PWD || process.cwd()
-                  const input = await DialogPrompt.show(dialog, "学生信息", {
-                    placeholder: "请输入姓名和学号，例如：张三 20240001",
-                  })
-                  if (!input) return
-                  const student = parseStudentInfo(input)
-                  if (!student) {
-                    toast.show({ title: "格式错误", message: "请输入：姓名 学号", variant: "warning" })
-                    return
-                  }
                   const result = await initLesson(cwd, sel)
-                  try {
-                    await startEvidenceRun(cwd, sel, student)
+                  if (result.created) {
                     toast.show({ title: "实验已初始化", message: shortenHome(result.dir), variant: "success" })
-                  } catch (err) {
-                    toast.error(err)
+                  } else {
+                    toast.show({ title: "跳过", message: `已存在：${shortenHome(result.dir)}`, variant: "info" })
                   }
                 }}
                 onReport={async (sel) => {
                   const cwd = process.env.PWD || process.cwd()
                   const dir = getLessonDir(cwd, sel)
-                  const meta = await loadEvidenceMeta(cwd, sel)
+                  let meta = await loadEvidenceMeta(cwd, sel)
                   if (!meta) {
-                    toast.show({ title: "缺少证据记录", message: "请先初始化实验并填写姓名学号", variant: "warning" })
-                    return
+                    const input = await DialogPrompt.show(dialog, "学生信息", {
+                      placeholder: "请输入姓名和学号，例如：张三 20240001",
+                    })
+                    if (!input) return
+                    const student = parseStudentInfo(input)
+                    if (!student) {
+                      toast.show({ title: "格式错误", message: "请输入：姓名 学号", variant: "warning" })
+                      return
+                    }
+                    meta = await startEvidenceRun(cwd, sel, student)
                   }
                   try {
                     const files = await collectFileEvidence(dir)

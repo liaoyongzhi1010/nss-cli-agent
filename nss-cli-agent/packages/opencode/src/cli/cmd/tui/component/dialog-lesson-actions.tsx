@@ -13,8 +13,8 @@ export function DialogLessonActions(props: Props) {
   const sel = lesson.selected()!
 
   const options = [
-    { title: "初始化实验", value: "init" as const, description: "在当前目录创建实验文件夹和 README" },
-    { title: "生成报告", value: "report" as const, description: "记录开发过程并生成实验报告" },
+    { title: "init", value: "init" as const, description: "初始化实验：创建实验文件夹和 README" },
+    { title: "report", value: "report" as const, description: "生成报告：上传证据并写入服务端签名" },
   ]
 
   return (
