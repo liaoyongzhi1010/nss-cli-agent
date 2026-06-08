@@ -69,6 +69,46 @@ def test_submit_evidence_returns_verifiable_signature(tmp_path, monkeypatch):
     assert body["signature"] == expected_signature
 
 
+def test_homepage_serves_teacher_dashboard(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "NSS Evidence Console" in response.text
+    assert "证据签名" in response.text
+
+
+def test_list_runs_returns_recent_submissions(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    start = client.post(
+        "/runs/start",
+        json={
+            "student_name": "赵六",
+            "student_id": "20240004",
+            "exercise_id": "04-web-sec-basic",
+            "computer": {"os": "macOS", "cpu": "Apple M3"},
+        },
+    ).json()
+    client.post(
+        f"/runs/{start['run_id']}/submit",
+        json={"report_markdown": "# report", "timeline": [], "files": []},
+    )
+
+    response = client.get("/api/runs")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runs"][0]["student_name"] == "赵六"
+    assert body["runs"][0]["exercise_id"] == "04-web-sec-basic"
+    assert body["runs"][0]["signature"]
+
+
 def test_get_run_returns_saved_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")

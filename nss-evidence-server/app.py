@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 
@@ -87,6 +88,117 @@ def connect() -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+@app.get("/", response_class=HTMLResponse)
+def homepage() -> str:
+    return """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NSS Evidence Console</title>
+  <style>
+    :root { color-scheme: dark; --bg:#050816; --panel:rgba(15,23,42,.78); --line:rgba(148,163,184,.22); --text:#e5e7eb; --muted:#94a3b8; --cyan:#22d3ee; --violet:#8b5cf6; --green:#34d399; --red:#fb7185; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text); background: radial-gradient(circle at 15% 10%, rgba(34,211,238,.22), transparent 28%), radial-gradient(circle at 80% 0%, rgba(139,92,246,.26), transparent 32%), linear-gradient(135deg,#020617,#0f172a 55%,#111827); }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 42px 42px; mask-image: linear-gradient(to bottom, rgba(0,0,0,.9), rgba(0,0,0,.15)); }
+    .wrap { position:relative; max-width:1180px; margin:0 auto; padding:48px 24px; }
+    .hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-end; margin-bottom:24px; }
+    .eyebrow { color:var(--cyan); letter-spacing:.22em; text-transform:uppercase; font-size:12px; font-weight:700; }
+    h1 { margin:.35rem 0 0; font-size:44px; line-height:1; }
+    .subtitle { color:var(--muted); margin-top:12px; font-size:15px; }
+    .badge { border:1px solid rgba(34,211,238,.35); background:rgba(34,211,238,.08); color:#a5f3fc; padding:10px 14px; border-radius:999px; box-shadow:0 0 36px rgba(34,211,238,.18); white-space:nowrap; }
+    .grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:14px; margin:24px 0; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:18px; backdrop-filter: blur(18px); box-shadow:0 18px 60px rgba(0,0,0,.22); }
+    .metric { font-size:28px; font-weight:800; margin-top:8px; }
+    .label { color:var(--muted); font-size:13px; }
+    .toolbar { display:flex; gap:12px; margin:22px 0; }
+    input { flex:1; background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:14px 16px; border-radius:14px; outline:none; }
+    button { border:0; border-radius:14px; padding:14px 18px; color:#06111f; font-weight:800; cursor:pointer; background:linear-gradient(135deg,var(--cyan),#a78bfa); }
+    table { width:100%; border-collapse:collapse; overflow:hidden; border-radius:18px; }
+    th, td { text-align:left; padding:14px 16px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:top; }
+    th { color:#bae6fd; background:rgba(15,23,42,.92); position:sticky; top:0; }
+    tr:hover td { background:rgba(34,211,238,.06); }
+    code { color:#a5f3fc; word-break:break-all; }
+    .ok { color:var(--green); font-weight:700; }
+    .empty { color:var(--muted); padding:28px; text-align:center; }
+    .details { white-space:pre-wrap; background:rgba(2,6,23,.75); border:1px solid var(--line); border-radius:14px; padding:14px; max-height:360px; overflow:auto; }
+    @media (max-width: 820px) { .hero { display:block; } .grid { grid-template-columns:1fr 1fr; } h1 { font-size:34px; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">NSS Evidence Console</div>
+        <h1>实验过程证据中心</h1>
+        <div class="subtitle">查询学生提交的证据包、服务器时间戳、文件哈希与防伪签名。</div>
+      </div>
+      <div class="badge">证据签名 · HMAC-SHA256</div>
+    </section>
+    <section class="grid">
+      <div class="card"><div class="label">提交总数</div><div class="metric" id="total">-</div></div>
+      <div class="card"><div class="label">已签名</div><div class="metric" id="signed">-</div></div>
+      <div class="card"><div class="label">学生数</div><div class="metric" id="students">-</div></div>
+      <div class="card"><div class="label">最新提交</div><div class="metric" id="latest" style="font-size:16px">-</div></div>
+    </section>
+    <section class="card">
+      <div class="toolbar">
+        <input id="query" placeholder="输入提交编号 / 学号 / 姓名 / 实验编号搜索" />
+        <button onclick="loadRuns()">刷新</button>
+      </div>
+      <div id="table"></div>
+    </section>
+  </main>
+  <script>
+    const el = (id) => document.getElementById(id)
+    async function loadRuns() {
+      const q = el('query').value.trim().toLowerCase()
+      const res = await fetch('/api/runs')
+      const data = await res.json()
+      const runs = data.runs.filter(r => !q || [r.run_id,r.student_id,r.student_name,r.exercise_id].some(v => String(v || '').toLowerCase().includes(q)))
+      el('total').textContent = data.runs.length
+      el('signed').textContent = data.runs.filter(r => r.signature).length
+      el('students').textContent = new Set(data.runs.map(r => r.student_id)).size
+      el('latest').textContent = data.runs[0]?.server_submitted_at || data.runs[0]?.server_started_at || '-'
+      if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无提交记录</div>'; return }
+      el('table').innerHTML = '<table><thead><tr><th>学生</th><th>实验</th><th>提交编号</th><th>服务器时间</th><th>证据哈希 / 签名</th><th>详情</th></tr></thead><tbody>' + runs.map(r => `
+        <tr>
+          <td><b>${r.student_name}</b><br><code>${r.student_id}</code></td>
+          <td>${r.exercise_id}</td>
+          <td><code>${r.run_id}</code></td>
+          <td>${r.server_submitted_at || r.server_started_at || '-'}</td>
+          <td><div class="ok">${r.signature ? '已签名' : '未提交报告'}</div><code>${r.evidence_hash || '-'}</code><br><code>${r.signature || '-'}</code></td>
+          <td><button onclick="showRun('${r.run_id}')">查看</button></td>
+        </tr>`).join('') + '</tbody></table><div id="detail" style="margin-top:16px"></div>'
+    }
+    async function showRun(id) {
+      const res = await fetch('/runs/' + id)
+      const run = await res.json()
+      document.getElementById('detail').innerHTML = '<div class="details">' + JSON.stringify(run, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</div>'
+    }
+    el('query').addEventListener('input', loadRuns)
+    loadRuns()
+  </script>
+</body>
+</html>
+    """
+
+
+@app.get("/api/runs")
+def list_runs() -> Dict[str, Any]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT run_id, student_name, student_id, exercise_id,
+                   server_started_at, server_submitted_at, evidence_hash, signature
+            FROM runs
+            ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
+            """
+        ).fetchall()
+    return {"runs": [dict(row) for row in rows]}
 
 
 @app.post("/runs/start")

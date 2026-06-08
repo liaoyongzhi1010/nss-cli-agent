@@ -20,6 +20,16 @@ python3 -m venv .venv
 NSS_EVIDENCE_SECRET=change-me .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
+## Web Console
+
+Open the teacher dashboard in a browser:
+
+```text
+http://127.0.0.1:8000
+```
+
+The dashboard supports searching by submission ID, student ID, student name, or exercise ID. It shows server timestamps, evidence hashes, signatures, and the raw stored evidence package.
+
 ## API
 
 ### Start Run
