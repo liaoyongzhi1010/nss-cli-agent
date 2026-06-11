@@ -367,6 +367,19 @@ def verify_run(run_id: str) -> Dict[str, Any]:
     }
 
 
+@app.delete("/runs/{run_id}")
+def delete_run(run_id: str) -> Dict[str, str]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT run_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        conn.execute("UPDATE runs SET status = 'deleted' WHERE run_id = ?", (run_id,))
+        conn.commit()
+    return {"run_id": run_id, "status": "deleted"}
+
+
 @app.get("/runs/{run_id}")
 def get_run(run_id: str) -> Dict[str, Any]:
     with connect() as conn:

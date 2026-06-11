@@ -294,3 +294,25 @@ def test_verify_detects_tampered_signature(tmp_path, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["signature_valid"] is False
+
+
+def test_delete_run_soft_deletes(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+
+    response = client.delete(f"/runs/{run['run_id']}")
+    assert response.status_code == 200
+
+    detail = client.get(f"/runs/{run['run_id']}").json()
+    assert detail["status"] == "deleted"
