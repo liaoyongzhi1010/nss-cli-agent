@@ -40,6 +40,11 @@ class SubmitEvidenceRequest(BaseModel):
     files: List[EvidenceFile] = Field(default_factory=list)
 
 
+class FinalizeRequest(BaseModel):
+    final_report_markdown: str
+    files: List[EvidenceFile] = Field(default_factory=list)
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -273,6 +278,57 @@ def submit_evidence(run_id: str, payload: SubmitEvidenceRequest) -> Dict[str, st
                 canonical_json(evidence),
                 evidence_hash,
                 signature,
+                server_submitted_at,
+                run_id,
+            ),
+        )
+        conn.commit()
+
+    return {
+        "run_id": run_id,
+        "server_submitted_at": server_submitted_at,
+        "evidence_hash": evidence_hash,
+        "signature": signature,
+    }
+
+
+@app.post("/runs/{run_id}/finalize")
+def finalize_run(run_id: str, payload: FinalizeRequest) -> Dict[str, str]:
+    server_submitted_at = now_iso()
+    evidence_data = {
+        "final_report_markdown": payload.final_report_markdown,
+        "files": [f.model_dump() for f in payload.files],
+    }
+    evidence_hash = sha256_json(evidence_data)
+    signature = sign(run_id, evidence_hash, server_submitted_at)
+
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT run_id, status, verify_status FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        if row["status"] != "active":
+            raise HTTPException(status_code=409, detail="该记录已被取代或删除")
+        if row["verify_status"] is not None:
+            raise HTTPException(
+                status_code=409, detail="已定版，请重新执行 report 开启新提交"
+            )
+
+        conn.execute(
+            """
+            UPDATE runs
+            SET evidence_json = ?, evidence_hash = ?, signature = ?,
+                server_submitted_at = ?, final_report_md = ?,
+                verify_status = 'verified', verified_at = ?
+            WHERE run_id = ?
+            """,
+            (
+                canonical_json(evidence_data),
+                evidence_hash,
+                signature,
+                server_submitted_at,
+                payload.final_report_markdown,
                 server_submitted_at,
                 run_id,
             ),

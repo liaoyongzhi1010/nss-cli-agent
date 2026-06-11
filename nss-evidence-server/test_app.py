@@ -173,3 +173,60 @@ def test_get_run_returns_saved_evidence(tmp_path, monkeypatch):
     assert body["student_id"] == "20240003"
     assert body["evidence"] == evidence
     assert body["signature"] == submitted["signature"]
+
+
+def test_finalize_returns_signature_and_marks_verified(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+
+    final_report = "# 实验报告\n\n正文内容"
+    files = [{"path": "solution.py", "sha256": "abc123", "size": 200}]
+    response = client.post(
+        f"/runs/{run['run_id']}/finalize",
+        json={"final_report_markdown": final_report, "files": files},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["run_id"] == run["run_id"]
+    assert body["signature"]
+    assert body["evidence_hash"]
+    assert body["server_submitted_at"]
+
+    detail = client.get(f"/runs/{run['run_id']}").json()
+    assert detail["verify_status"] == "verified"
+    assert detail["signature"] == body["signature"]
+
+
+def test_finalize_rejects_already_finalized_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+
+    payload = {"final_report_markdown": "# report", "files": []}
+    client.post(f"/runs/{run['run_id']}/finalize", json=payload)
+    response = client.post(f"/runs/{run['run_id']}/finalize", json=payload)
+
+    assert response.status_code == 409
+    assert "已定版" in response.json()["detail"]
