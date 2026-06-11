@@ -183,3 +183,65 @@ ${evidenceAppendix(input.signature)}`
   await writeFile(join(input.dir, "report.md"), content, "utf-8")
   return content
 }
+
+export async function writeReportSkeleton(input: {
+  dir: string
+  title: string
+  meta: EvidenceMeta
+}) {
+  const content = `# 实验报告：${input.title}
+
+## 基本信息
+
+- 姓名：${input.meta.student.name}
+- 学号：${input.meta.student.id}
+- 实验开始时间：${input.meta.serverStartedAt}
+- 提交编号：${input.meta.runId}
+
+## 实验目标
+
+请根据 README.md 补充本实验目标。
+
+## 操作时间线
+
+请记录关键操作步骤和时间。
+
+## 代码文件清单
+
+完成实验后执行 submit 自动生成。
+
+## 实现要点（从抽象到代码的映射）
+
+请根据你的实现补充关键思路、参数选择和代码映射。
+
+## 遇到的问题与解决
+
+请补充实验过程中遇到的问题和解决过程。
+
+## 结论与反思
+
+请补充实验结论和个人反思。
+`
+  await writeFile(join(input.dir, "report.md"), content, "utf-8")
+  return content
+}
+
+export interface FinalizeResult {
+  run_id: string
+  server_submitted_at: string
+  evidence_hash: string
+  signature: string
+}
+
+export async function finalizeEvidence(meta: EvidenceMeta, reportMarkdown: string, files: EvidenceFileInfo[]): Promise<FinalizeResult> {
+  const response = await fetch(`${meta.evidenceServer}/runs/${meta.runId}/finalize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ final_report_markdown: reportMarkdown, files }),
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`定版失败：${response.status} ${text}`)
+  }
+  return (await response.json()) as FinalizeResult
+}

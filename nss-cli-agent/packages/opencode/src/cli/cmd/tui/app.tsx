@@ -44,8 +44,8 @@ import {
   loadEvidenceMeta,
   parseStudentInfo,
   startEvidenceRun,
-  submitEvidence,
-  writeSignedReportDraft,
+  writeReportSkeleton,
+  finalizeEvidence,
 } from "@tui/component/lab-evidence"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { useConnected } from "@tui/component/use-connected"
@@ -675,34 +675,52 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   const cwd = process.env.PWD || process.cwd()
                   const dir = getLessonDir(cwd, sel)
                   let meta = await loadEvidenceMeta(cwd, sel)
-                  if (!meta) {
-                    const input = await DialogPrompt.show(dialog, "学生信息", {
-                      placeholder: "请输入姓名和学号，例如：张三 20240001",
-                    })
-                    if (!input) return
-                    const student = parseStudentInfo(input)
-                    if (!student) {
-                      toast.show({ title: "格式错误", message: "请输入：姓名 学号", variant: "warning" })
-                      return
-                    }
-                    meta = await startEvidenceRun(cwd, sel, student)
+                  if (meta) {
+                    toast.show({ title: "已有报告", message: "该实验已初始化报告，请直接编辑后 submit", variant: "info" })
+                    return
+                  }
+                  const input = await DialogPrompt.show(dialog, "学生信息", {
+                    placeholder: "请输入姓名和学号，例如：张三 20240001",
+                  })
+                  if (!input) return
+                  const student = parseStudentInfo(input)
+                  if (!student) {
+                    toast.show({ title: "格式错误", message: "请输入：姓名 学号", variant: "warning" })
+                    return
                   }
                   try {
+                    meta = await startEvidenceRun(cwd, sel, student)
+                    await writeReportSkeleton({ dir, title: sel.title, meta })
+                    toast.show({ title: "报告骨架已生成", message: `${shortenHome(dir)}/report.md — 写完实验后选 submit 提交`, variant: "success" })
+                  } catch (err) {
+                    toast.error(err)
+                  }
+                }}
+                onSubmit={async (sel) => {
+                  const cwd = process.env.PWD || process.cwd()
+                  const dir = getLessonDir(cwd, sel)
+                  const meta = await loadEvidenceMeta(cwd, sel)
+                  if (!meta) {
+                    toast.show({ title: "请先 report", message: "该实验尚未初始化报告，请先选择 report", variant: "warning" })
+                    return
+                  }
+                  try {
+                    const { readFile, writeFile } = await import("fs/promises")
+                    const { join } = await import("path")
+                    const reportPath = join(dir, "report.md")
+                    let reportMd: string
+                    try {
+                      reportMd = await readFile(reportPath, "utf-8")
+                    } catch {
+                      toast.show({ title: "未找到报告", message: "请先编写 report.md", variant: "warning" })
+                      return
+                    }
                     const files = await collectFileEvidence(dir)
-                    const draft = `# 实验报告：${sel.title}\n\n生成中，请根据对话历史补全。`
-                    const uploaded = await submitEvidence(meta, {
-                      report_markdown: draft,
-                      timeline: [{ time: new Date().toISOString(), event: "生成实验报告" }],
-                      files,
-                    })
-                    const signatureBlock = evidenceAppendix(uploaded)
-                    await writeSignedReportDraft({ dir, title: sel.title, meta, files, signature: uploaded })
-                    toast.show({ title: "报告已生成", message: shortenHome(`${dir}/report.md`), variant: "success" })
-                    promptRef.current?.set({
-                      input: `请基于 ${dir}/report.md 继续完善实验报告正文。必须保留以下服务器证据签名块，不得修改其中任何字段：\n${signatureBlock}\n\n请补充：实验目标、操作时间线、实现要点、遇到的问题与解决、结论与反思。`,
-                      parts: [],
-                    })
-                    promptRef.current?.submit()
+                    const result = await finalizeEvidence(meta, reportMd, files)
+                    const appendix = evidenceAppendix(result)
+                    const finalContent = reportMd.replace(/\n## 服务器证据签名[\s\S]*$/, "") + appendix
+                    await writeFile(reportPath, finalContent, "utf-8")
+                    toast.show({ title: "✅ 提交成功", message: `已定版并签名 — ${result.signature.slice(0, 16)}...`, variant: "success" })
                   } catch (err) {
                     toast.error(err)
                   }
