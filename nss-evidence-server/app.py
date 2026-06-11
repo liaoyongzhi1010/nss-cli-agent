@@ -209,16 +209,30 @@ def homepage() -> str:
 
 
 @app.get("/api/runs")
-def list_runs() -> Dict[str, Any]:
+def list_runs(status: str = "active") -> Dict[str, Any]:
     with connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT run_id, student_name, student_id, exercise_id,
-                   server_started_at, server_submitted_at, evidence_hash, signature
-            FROM runs
-            ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
-            """
-        ).fetchall()
+        if status == "all":
+            rows = conn.execute(
+                """
+                SELECT run_id, student_name, student_id, exercise_id,
+                       server_started_at, server_submitted_at, evidence_hash,
+                       signature, status, verify_status
+                FROM runs
+                ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT run_id, student_name, student_id, exercise_id,
+                       server_started_at, server_submitted_at, evidence_hash,
+                       signature, status, verify_status
+                FROM runs
+                WHERE status = ?
+                ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
+                """,
+                (status,),
+            ).fetchall()
     return {"runs": [dict(row) for row in rows]}
 
 

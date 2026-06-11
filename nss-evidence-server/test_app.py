@@ -316,3 +316,24 @@ def test_delete_run_soft_deletes(tmp_path, monkeypatch):
 
     detail = client.get(f"/runs/{run['run_id']}").json()
     assert detail["status"] == "deleted"
+
+
+def test_list_runs_filters_by_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    payload = {
+        "student_name": "张三",
+        "student_id": "20240001",
+        "exercise_id": "01-crypto-basic",
+        "computer": {},
+    }
+    client.post("/runs/start", json=payload)
+    client.post("/runs/start", json=payload)
+
+    response_active = client.get("/api/runs?status=active")
+    response_all = client.get("/api/runs?status=all")
+
+    assert len(response_active.json()["runs"]) == 1
+    assert len(response_all.json()["runs"]) == 2
