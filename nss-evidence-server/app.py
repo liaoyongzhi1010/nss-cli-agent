@@ -343,6 +343,30 @@ def finalize_run(run_id: str, payload: FinalizeRequest) -> Dict[str, str]:
     }
 
 
+@app.get("/runs/{run_id}/verify")
+def verify_run(run_id: str) -> Dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT run_id, evidence_hash, signature, server_submitted_at, verify_status FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        if row["signature"] is None:
+            raise HTTPException(status_code=400, detail="尚未定版，无法验证")
+
+    expected_sig = sign(row["run_id"], row["evidence_hash"], row["server_submitted_at"])
+    signature_valid = hmac.compare_digest(expected_sig, row["signature"])
+
+    return {
+        "run_id": run_id,
+        "signature_valid": signature_valid,
+        "verify_status": row["verify_status"],
+        "evidence_hash": row["evidence_hash"],
+        "server_submitted_at": row["server_submitted_at"],
+    }
+
+
 @app.get("/runs/{run_id}")
 def get_run(run_id: str) -> Dict[str, Any]:
     with connect() as conn:

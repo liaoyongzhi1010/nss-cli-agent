@@ -230,3 +230,67 @@ def test_finalize_rejects_already_finalized_run(tmp_path, monkeypatch):
 
     assert response.status_code == 409
     assert "已定版" in response.json()["detail"]
+
+
+def test_verify_confirms_valid_signature(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+    client.post(
+        f"/runs/{run['run_id']}/finalize",
+        json={"final_report_markdown": "# report", "files": []},
+    )
+
+    response = client.get(f"/runs/{run['run_id']}/verify")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["signature_valid"] is True
+    assert body["verify_status"] == "verified"
+
+
+def test_verify_detects_tampered_signature(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+    client.post(
+        f"/runs/{run['run_id']}/finalize",
+        json={"final_report_markdown": "# report", "files": []},
+    )
+
+    import sqlite3
+
+    db_path = tmp_path / "evidence.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "UPDATE runs SET evidence_hash = 'tampered_hash' WHERE run_id = ?",
+        (run["run_id"],),
+    )
+    conn.commit()
+    conn.close()
+
+    response = client.get(f"/runs/{run['run_id']}/verify")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["signature_valid"] is False
