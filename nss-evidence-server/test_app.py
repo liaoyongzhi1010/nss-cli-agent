@@ -128,6 +128,26 @@ def test_schema_has_status_and_verify_columns(tmp_path, monkeypatch):
     assert detail["verify_status"] is None
 
 
+def test_start_run_supersedes_previous_active_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    payload = {
+        "student_name": "张三",
+        "student_id": "20240001",
+        "exercise_id": "01-crypto-basic",
+        "computer": {},
+    }
+    first = client.post("/runs/start", json=payload).json()
+    second = client.post("/runs/start", json=payload).json()
+
+    first_detail = client.get(f"/runs/{first['run_id']}").json()
+    second_detail = client.get(f"/runs/{second['run_id']}").json()
+    assert first_detail["status"] == "superseded"
+    assert second_detail["status"] == "active"
+
+
 def test_get_run_returns_saved_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")

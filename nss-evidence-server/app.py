@@ -222,12 +222,20 @@ def start_run(payload: StartRunRequest) -> Dict[str, str]:
     run_id = "run_" + uuid.uuid4().hex
     server_started_at = now_iso()
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            """
+            UPDATE runs SET status = 'superseded'
+            WHERE student_id = ? AND exercise_id = ? AND status = 'active'
+            """,
+            (payload.student_id, payload.exercise_id),
+        )
         conn.execute(
             """
             INSERT INTO runs (
                 run_id, student_name, student_id, exercise_id,
-                computer_json, server_started_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                computer_json, server_started_at, status
+            ) VALUES (?, ?, ?, ?, ?, ?, 'active')
             """,
             (
                 run_id,
