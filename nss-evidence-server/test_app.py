@@ -109,6 +109,25 @@ def test_list_runs_returns_recent_submissions(tmp_path, monkeypatch):
     assert body["runs"][0]["signature"]
 
 
+def test_schema_has_status_and_verify_columns(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "测试",
+            "student_id": "T001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+    detail = client.get(f"/runs/{run['run_id']}").json()
+    assert detail["status"] == "active"
+    assert detail["verify_status"] is None
+
+
 def test_get_run_returns_saved_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")

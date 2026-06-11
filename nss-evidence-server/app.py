@@ -82,10 +82,26 @@ def connect() -> sqlite3.Connection:
             evidence_json TEXT,
             evidence_hash TEXT,
             signature TEXT,
-            server_submitted_at TEXT
+            server_submitted_at TEXT,
+            final_report_md TEXT,
+            verify_status TEXT,
+            verified_at TEXT,
+            verify_detail TEXT,
+            status TEXT NOT NULL DEFAULT 'active'
         )
         """
     )
+    for column, ddl in (
+        ("final_report_md", "final_report_md TEXT"),
+        ("verify_status", "verify_status TEXT"),
+        ("verified_at", "verified_at TEXT"),
+        ("verify_detail", "verify_detail TEXT"),
+        ("status", "status TEXT NOT NULL DEFAULT 'active'"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {ddl}")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     return conn
 
@@ -285,4 +301,9 @@ def get_run(run_id: str) -> Dict[str, Any]:
         "evidence_hash": row["evidence_hash"],
         "signature": row["signature"],
         "evidence": evidence,
+        "status": row["status"],
+        "verify_status": row["verify_status"],
+        "verified_at": row["verified_at"],
+        "verify_detail": row["verify_detail"],
+        "final_report_md": row["final_report_md"],
     }
