@@ -130,7 +130,7 @@ def homepage() -> str:
     .eyebrow { color:var(--cyan); letter-spacing:.22em; text-transform:uppercase; font-size:12px; font-weight:700; }
     h1 { margin:.35rem 0 0; font-size:44px; line-height:1; }
     .subtitle { color:var(--muted); margin-top:12px; font-size:15px; }
-    .badge { border:1px solid rgba(34,211,238,.35); background:rgba(34,211,238,.08); color:#a5f3fc; padding:10px 14px; border-radius:999px; box-shadow:0 0 36px rgba(34,211,238,.18); white-space:nowrap; }
+    .hero-badge { border:1px solid rgba(34,211,238,.35); background:rgba(34,211,238,.08); color:#a5f3fc; padding:10px 14px; border-radius:999px; box-shadow:0 0 36px rgba(34,211,238,.18); white-space:nowrap; }
     .grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:14px; margin:24px 0; }
     .card { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:18px; backdrop-filter: blur(18px); box-shadow:0 18px 60px rgba(0,0,0,.22); }
     .metric { font-size:28px; font-weight:800; margin-top:8px; }
@@ -146,6 +146,13 @@ def homepage() -> str:
     .ok { color:var(--green); font-weight:700; }
     .empty { color:var(--muted); padding:28px; text-align:center; }
     .details { white-space:pre-wrap; background:rgba(2,6,23,.75); border:1px solid var(--line); border-radius:14px; padding:14px; max-height:360px; overflow:auto; }
+    .badge { display:inline-block; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:700; }
+    .badge-verified { background:rgba(52,211,153,.15); color:var(--green); border:1px solid rgba(52,211,153,.3); }
+    .badge-pending { background:rgba(148,163,184,.12); color:var(--muted); border:1px solid rgba(148,163,184,.25); }
+    .badge-superseded { background:rgba(251,146,60,.12); color:#fb923c; border:1px solid rgba(251,146,60,.25); }
+    .badge-deleted { background:rgba(251,113,133,.12); color:var(--red); border:1px solid rgba(251,113,133,.25); }
+    select { background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:14px 16px; border-radius:14px; outline:none; }
+    .btn-verify { font-size:12px; padding:6px 12px; border-radius:10px; }
     @media (max-width: 820px) { .hero { display:block; } .grid { grid-template-columns:1fr 1fr; } h1 { font-size:34px; } }
   </style>
 </head>
@@ -157,17 +164,23 @@ def homepage() -> str:
         <h1>实验过程证据中心</h1>
         <div class="subtitle">查询学生提交的证据包、服务器时间戳、文件哈希与防伪签名。</div>
       </div>
-      <div class="badge">证据签名 · HMAC-SHA256</div>
+      <div class="hero-badge">证据签名 · HMAC-SHA256</div>
     </section>
     <section class="grid">
       <div class="card"><div class="label">提交总数</div><div class="metric" id="total">-</div></div>
-      <div class="card"><div class="label">已签名</div><div class="metric" id="signed">-</div></div>
+      <div class="card"><div class="label">已验证</div><div class="metric" id="verified">-</div></div>
+      <div class="card"><div class="label">待提交</div><div class="metric" id="pending">-</div></div>
       <div class="card"><div class="label">学生数</div><div class="metric" id="students">-</div></div>
-      <div class="card"><div class="label">最新提交</div><div class="metric" id="latest" style="font-size:16px">-</div></div>
     </section>
     <section class="card">
       <div class="toolbar">
         <input id="query" placeholder="输入提交编号 / 学号 / 姓名 / 实验编号搜索" />
+        <select id="statusFilter">
+          <option value="active">仅活跃</option>
+          <option value="all">全部</option>
+          <option value="superseded">已取代</option>
+          <option value="deleted">已删除</option>
+        </select>
         <button onclick="loadRuns()">刷新</button>
       </div>
       <div id="table"></div>
@@ -175,25 +188,49 @@ def homepage() -> str:
   </main>
   <script>
     const el = (id) => document.getElementById(id)
+    function renderBadge(r) {
+      if (r.verify_status === 'verified') return '<span class="badge badge-verified">✅已验证</span>'
+      if (r.status === 'superseded') return '<span class="badge badge-superseded">🔄已取代</span>'
+      if (r.status === 'deleted') return '<span class="badge badge-deleted">🗑已删除</span>'
+      if (!r.signature) return '<span class="badge badge-pending">📝待提交</span>'
+      return '<span class="badge badge-pending">📝待提交</span>'
+    }
     async function loadRuns() {
       const q = el('query').value.trim().toLowerCase()
-      const res = await fetch('/api/runs')
+      const status = el('statusFilter').value
+      const res = await fetch('/api/runs?status=' + encodeURIComponent(status))
       const data = await res.json()
       const runs = data.runs.filter(r => !q || [r.run_id,r.student_id,r.student_name,r.exercise_id].some(v => String(v || '').toLowerCase().includes(q)))
       el('total').textContent = data.runs.length
-      el('signed').textContent = data.runs.filter(r => r.signature).length
+      el('verified').textContent = data.runs.filter(r => r.verify_status === 'verified').length
+      el('pending').textContent = data.runs.filter(r => !r.signature).length
       el('students').textContent = new Set(data.runs.map(r => r.student_id)).size
-      el('latest').textContent = data.runs[0]?.server_submitted_at || data.runs[0]?.server_started_at || '-'
       if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无提交记录</div>'; return }
-      el('table').innerHTML = '<table><thead><tr><th>学生</th><th>实验</th><th>提交编号</th><th>服务器时间</th><th>证据哈希 / 签名</th><th>详情</th></tr></thead><tbody>' + runs.map(r => `
+      el('table').innerHTML = '<table><thead><tr><th>学生</th><th>实验</th><th>提交编号</th><th>状态</th><th>服务器时间</th><th>证据哈希 / 签名</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
         <tr>
           <td><b>${r.student_name}</b><br><code>${r.student_id}</code></td>
           <td>${r.exercise_id}</td>
           <td><code>${r.run_id}</code></td>
+          <td>${renderBadge(r)}</td>
           <td>${r.server_submitted_at || r.server_started_at || '-'}</td>
-          <td><div class="ok">${r.signature ? '已签名' : '未提交报告'}</div><code>${r.evidence_hash || '-'}</code><br><code>${r.signature || '-'}</code></td>
-          <td><button onclick="showRun('${r.run_id}')">查看</button></td>
+          <td><code>${r.evidence_hash || '-'}</code><br><code>${r.signature || '-'}</code></td>
+          <td>${r.signature ? '<button class="btn-verify" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button> ' : ''}<button onclick="showRun('${r.run_id}')">查看</button></td>
         </tr>`).join('') + '</tbody></table><div id="detail" style="margin-top:16px"></div>'
+    }
+    async function verifyRun(id, btn) {
+      btn.disabled = true
+      btn.textContent = '...'
+      try {
+        const res = await fetch('/runs/' + id + '/verify')
+        const data = await res.json()
+        btn.textContent = data.signature_valid ? '✅ 有效' : '❌ 无效'
+        btn.style.background = data.signature_valid ? 'rgba(52,211,153,.2)' : 'rgba(251,113,133,.2)'
+        btn.style.color = data.signature_valid ? 'var(--green)' : 'var(--red)'
+      } catch(e) {
+        btn.textContent = '❌ 错误'
+        btn.style.background = 'rgba(251,113,133,.2)'
+        btn.style.color = 'var(--red)'
+      }
     }
     async function showRun(id) {
       const res = await fetch('/runs/' + id)
@@ -201,6 +238,7 @@ def homepage() -> str:
       document.getElementById('detail').innerHTML = '<div class="details">' + JSON.stringify(run, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</div>'
     }
     el('query').addEventListener('input', loadRuns)
+    el('statusFilter').addEventListener('change', loadRuns)
     loadRuns()
   </script>
 </body>
