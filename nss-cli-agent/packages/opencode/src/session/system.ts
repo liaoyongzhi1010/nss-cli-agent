@@ -15,6 +15,7 @@ import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
 import { Skill } from "@/skill"
+import { lessonScriptFromDir, formatLessonGuidance } from "@/labs/lessons"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("gpt-4") || model.api.id.includes("o1") || model.api.id.includes("o3"))
@@ -47,7 +48,7 @@ export const layer = Layer.effect(
     return Service.of({
       environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
         const ctx = yield* InstanceState.context
-        return [
+        const blocks = [
           [
             `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
             `Here is some useful information about the environment you are running in:`,
@@ -60,6 +61,9 @@ export const layer = Layer.effect(
             `</env>`,
           ].join("\n"),
         ]
+        const lesson = lessonScriptFromDir(ctx.directory)
+        if (lesson) blocks.push(formatLessonGuidance(lesson))
+        return blocks
       }),
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
