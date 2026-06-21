@@ -42,12 +42,11 @@ import {
   collectFileEvidence,
   evidenceAppendix,
   loadEvidenceMeta,
-  parseStudentInfo,
+  resolveStudentInfo,
   startEvidenceRun,
-  writeReportSkeleton,
+  writeReportWithFiles,
   finalizeEvidence,
 } from "@tui/component/lab-evidence"
-import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { useConnected } from "@tui/component/use-connected"
 import { DialogMcp } from "@tui/component/dialog-mcp"
 import { DialogStatus } from "@tui/component/dialog-status"
@@ -512,6 +511,16 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         })
       }
     })
+    setTimeout(async () => {
+      const student = await resolveStudentInfo()
+      if (!student) {
+        await DialogAlert.show(
+          dialog,
+          "欢迎使用 nss-cli · 请先设置学生信息",
+          '检测到尚未配置学生信息（做课程实验、生成报告时需要）。\n\n请退出后设置环境变量，再启动 nsscli：\nexport NSS_STUDENT="姓名 学号"（例如：张三 20240001）\n\n首次执行后会自动保存到 ~/.config/nss-cli/student.json，以后无需再设。\n\n（若你只是用 nsscli 做开发、不做课程实验，可忽略本提示。）',
+        )
+      }
+    }, 500)
   })
 
   let continued = false
@@ -666,9 +675,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   const cwd = process.env.PWD || process.cwd()
                   const result = await initLesson(cwd, sel)
                   if (result.created) {
-                    toast.show({ title: "实验已初始化", message: shortenHome(result.dir), variant: "success" })
+                    await DialogAlert.show(
+                      dialog,
+                      "✅ 实验已初始化",
+                      `已创建 ${shortenHome(result.dir)}\n\n下一步：进入该目录启动 nsscli，直接和 AI 对话开始做实验，AI 会一步步带你完成。\ncd ${shortenHome(result.dir)}\n\n做完后回到 /lesson 选择 report 生成报告。`,
+                    )
                   } else {
-                    toast.show({ title: "跳过", message: `已存在：${shortenHome(result.dir)}`, variant: "info" })
+                    await DialogAlert.show(dialog, "实验已存在", `已存在：${shortenHome(result.dir)}\n可直接进入该目录继续做实验。`)
                   }
                 }}
                 onReport={async (sel) => {
@@ -676,24 +689,34 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   const dir = getLessonDir(cwd, sel)
                   let meta = await loadEvidenceMeta(cwd, sel)
                   if (meta) {
-                    toast.show({ title: "已有报告", message: "该实验已初始化报告，请直接编辑后 submit", variant: "info" })
+                    await DialogAlert.show(dialog, "已有报告", "该实验已生成过报告，请直接编辑 report.md 后在 /lesson 选择 submit。")
                     return
                   }
-                  const input = await DialogPrompt.show(dialog, "学生信息", {
-                    placeholder: "请输入姓名和学号，例如：张三 20240001",
-                  })
-                  if (!input) return
-                  const student = parseStudentInfo(input)
+                  const student = await resolveStudentInfo()
                   if (!student) {
-                    toast.show({ title: "格式错误", message: "请输入：姓名 学号", variant: "warning" })
+                    await DialogAlert.show(
+                      dialog,
+                      "请先设置学生信息",
+                      '首次使用请设置学生信息，之后会自动记住、换实验无需重输。\n\n方式：启动 nsscli 前设置环境变量\nexport NSS_STUDENT="张三 20240001"\n\n设置后重新启动 nsscli，执行一次 report 即会保存到配置（~/.config/nss-cli/student.json），以后不用再设。',
+                    )
                     return
                   }
                   try {
                     meta = await startEvidenceRun(cwd, sel, student)
-                    await writeReportSkeleton({ dir, title: sel.title, meta })
-                    toast.show({ title: "报告骨架已生成", message: `${shortenHome(dir)}/report.md — 写完实验后选 submit 提交`, variant: "success" })
+                    const files = await collectFileEvidence(dir)
+                    await writeReportWithFiles({ dir, title: sel.title, meta, files })
+                    await DialogAlert.show(
+                      dialog,
+                      "✅ 报告初版已生成",
+                      `学生：${student.name}（${student.id}）\n已根据实验代码生成 ${shortenHome(dir)}/report.md（含 ${files.length} 个文件）\n\n接下来 AI 会基于你的代码自动补全报告初版，你可以在此基础上修改。改好后回到 /lesson 选择 submit 提交定版。`,
+                    )
+                    promptRef.current?.set({
+                      input: `请阅读当前实验目录下的 README.md、solution.py（及其它实验代码）和 report.md，然后基于学生实际写的代码，把 ${dir}/report.md 补全成一份完整的实验报告初版：填写实验目标、操作时间线、实现要点（从抽象到代码的映射）、遇到的问题与解决、结论与反思。保留"基本信息"和"代码文件清单"两节不要改动。直接编辑 report.md 文件，写完后告诉学生可以检查修改，满意后用 /lesson 的 submit 提交。`,
+                      parts: [],
+                    })
+                    promptRef.current?.submit()
                   } catch (err) {
-                    toast.error(err)
+                    await DialogAlert.show(dialog, "报告生成失败", err instanceof Error ? err.message : String(err))
                   }
                 }}
                 onSubmit={async (sel) => {
@@ -701,7 +724,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   const dir = getLessonDir(cwd, sel)
                   const meta = await loadEvidenceMeta(cwd, sel)
                   if (!meta) {
-                    toast.show({ title: "请先 report", message: "该实验尚未初始化报告，请先选择 report", variant: "warning" })
+                    await DialogAlert.show(dialog, "请先 report", "该实验尚未初始化报告，请先在 /lesson 选择 report。")
                     return
                   }
                   try {
@@ -712,7 +735,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                     try {
                       reportMd = await readFile(reportPath, "utf-8")
                     } catch {
-                      toast.show({ title: "未找到报告", message: "请先编写 report.md", variant: "warning" })
+                      await DialogAlert.show(dialog, "未找到报告", "请先编写 report.md 再提交。")
                       return
                     }
                     const files = await collectFileEvidence(dir)
@@ -720,9 +743,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                     const appendix = evidenceAppendix(result)
                     const finalContent = reportMd.replace(/\n## 服务器证据签名[\s\S]*$/, "") + appendix
                     await writeFile(reportPath, finalContent, "utf-8")
-                    toast.show({ title: "✅ 提交成功", message: `已定版并签名 — ${result.signature.slice(0, 16)}...`, variant: "success" })
+                    await DialogAlert.show(
+                      dialog,
+                      "✅ 提交成功",
+                      `报告已定版并签名（${result.signature.slice(0, 16)}...）\n\n教师可在证据面板查看你的提交与验证状态。`,
+                    )
                   } catch (err) {
-                    toast.error(err)
+                    await DialogAlert.show(dialog, "提交失败", err instanceof Error ? err.message : String(err))
                   }
                 }}
               />

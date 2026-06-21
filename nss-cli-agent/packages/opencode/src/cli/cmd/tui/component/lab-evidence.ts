@@ -1,6 +1,8 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "fs/promises"
 import { createHash } from "crypto"
 import { join, relative } from "path"
+import { xdgConfig } from "xdg-basedir"
+import { homedir } from "os"
 import type { SelectedLesson } from "./use-lesson"
 import { getLessonDir } from "./lab-init"
 
@@ -47,6 +49,41 @@ export function parseStudentInfo(value: string): StudentInfo | null {
   return { name: match[1].trim(), id: match[2].trim() }
 }
 
+function studentConfigPath(): string {
+  const base = xdgConfig ?? join(homedir(), ".config")
+  return join(base, "nss-cli", "student.json")
+}
+
+export async function loadStudentConfig(): Promise<StudentInfo | null> {
+  try {
+    const content = await readFile(studentConfigPath(), "utf-8")
+    const data = JSON.parse(content) as Partial<StudentInfo>
+    if (data && typeof data.name === "string" && typeof data.id === "string" && data.name && data.id) {
+      return { name: data.name, id: data.id }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function saveStudentConfig(student: StudentInfo): Promise<void> {
+  const path = studentConfigPath()
+  await mkdir(join(path, ".."), { recursive: true })
+  await writeFile(path, JSON.stringify(student, null, 2), "utf-8")
+}
+
+export async function resolveStudentInfo(): Promise<StudentInfo | null> {
+  const fromConfig = await loadStudentConfig()
+  if (fromConfig) return fromConfig
+  const fromEnv = parseStudentInfo(process.env.NSS_STUDENT ?? "")
+  if (fromEnv) {
+    await saveStudentConfig(fromEnv)
+    return fromEnv
+  }
+  return null
+}
+
 export async function collectComputerInfo() {
   return {
     platform: process.platform,
@@ -58,17 +95,22 @@ export async function collectComputerInfo() {
 
 export async function startEvidenceRun(cwd: string, lesson: SelectedLesson, student: StudentInfo): Promise<EvidenceMeta> {
   const server = evidenceServerURL()
-  const response = await fetch(`${server}/runs/start`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      student_name: student.name,
-      student_id: student.id,
-      exercise_id: lesson.exerciseID,
-      computer: await collectComputerInfo(),
-    }),
-  })
-  if (!response.ok) throw new Error(`证据后端启动失败：${response.status} ${await response.text()}`)
+  let response: Response
+  try {
+    response = await fetch(`${server}/runs/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        student_name: student.name,
+        student_id: student.id,
+        exercise_id: lesson.exerciseID,
+        computer: await collectComputerInfo(),
+      }),
+    })
+  } catch {
+    throw new Error(`无法连接证据服务器（${server}）。请确认证据后端已启动，或设置 NSS_EVIDENCE_SERVER 环境变量。`)
+  }
+  if (!response.ok) throw new Error(`证据后端返回错误：${response.status} ${await response.text()}`)
   const body = (await response.json()) as { run_id: string; server_started_at: string }
   const meta = {
     runId: body.run_id,
@@ -191,6 +233,10 @@ export async function writeReportSkeleton(input: {
 }) {
   const content = `# 实验报告：${input.title}
 
+> 📌 下一步：直接和 AI 对话开始做这个实验，AI 会按教学脚本一步步带你完成。
+> 实验做完后，回到 /lesson 选择 **submit** 提交定版并签名。
+> 你可以随时编辑下面的报告正文。
+
 ## 基本信息
 
 - 姓名：${input.meta.student.name}
@@ -226,6 +272,56 @@ export async function writeReportSkeleton(input: {
   return content
 }
 
+export async function writeReportWithFiles(input: {
+  dir: string
+  title: string
+  meta: EvidenceMeta
+  files: EvidenceFileInfo[]
+}) {
+  const fileLines =
+    input.files.length > 0
+      ? input.files.map((f) => `- ${f.path}（${f.size} 字节）SHA256: ${f.sha256}`).join("\n")
+      : "- 暂未检测到代码文件，请确认实验代码已保存在本实验目录下。"
+  const content = `# 实验报告：${input.title}
+
+> 📌 报告已根据你当前实验目录的代码自动生成。请补全各小节内容。
+> 确认无误后，回到 /lesson 选择 **submit** 提交定版并签名。
+
+## 基本信息
+
+- 姓名：${input.meta.student.name}
+- 学号：${input.meta.student.id}
+- 实验开始时间：${input.meta.serverStartedAt}
+- 提交编号：${input.meta.runId}
+
+## 实验目标
+
+请根据 README.md 补充本实验目标。
+
+## 操作时间线
+
+请记录关键操作步骤和时间。
+
+## 代码文件清单
+
+${fileLines}
+
+## 实现要点（从抽象到代码的映射）
+
+请补充关键思路、参数选择和代码映射。
+
+## 遇到的问题与解决
+
+请补充实验过程中遇到的问题和解决过程。
+
+## 结论与反思
+
+请补充实验结论和个人反思。
+`
+  await writeFile(join(input.dir, "report.md"), content, "utf-8")
+  return content
+}
+
 export interface FinalizeResult {
   run_id: string
   server_submitted_at: string
@@ -234,11 +330,16 @@ export interface FinalizeResult {
 }
 
 export async function finalizeEvidence(meta: EvidenceMeta, reportMarkdown: string, files: EvidenceFileInfo[]): Promise<FinalizeResult> {
-  const response = await fetch(`${meta.evidenceServer}/runs/${meta.runId}/finalize`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ final_report_markdown: reportMarkdown, files }),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${meta.evidenceServer}/runs/${meta.runId}/finalize`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ final_report_markdown: reportMarkdown, files }),
+    })
+  } catch {
+    throw new Error(`无法连接证据服务器（${meta.evidenceServer}）。请确认证据后端已启动后重试 submit。`)
+  }
   if (!response.ok) {
     const text = await response.text()
     throw new Error(`定版失败：${response.status} ${text}`)
