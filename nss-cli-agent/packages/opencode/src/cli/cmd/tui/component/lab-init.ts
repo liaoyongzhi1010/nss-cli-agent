@@ -57,6 +57,8 @@ function fallbackReadme(lesson: SelectedLesson): string {
 
 export function getLessonDir(cwd: string, lesson: SelectedLesson): string {
   const name = dirName(lesson)
+  const base = cwd.split(/[\\/]/).filter(Boolean).pop()
+  if (base === name) return cwd
   return join(cwd, name)
 }
 
@@ -72,8 +74,7 @@ export interface InitResult {
 }
 
 export async function initLesson(cwd: string, lesson: SelectedLesson): Promise<InitResult> {
-  const name = dirName(lesson)
-  const dir = join(cwd, name)
+  const dir = getLessonDir(cwd, lesson)
   const readmePath = join(dir, "README.md")
 
   if (await exists(readmePath)) {
