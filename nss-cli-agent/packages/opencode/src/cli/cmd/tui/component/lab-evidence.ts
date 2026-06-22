@@ -73,10 +73,17 @@ export async function saveStudentConfig(student: StudentInfo): Promise<void> {
   await writeFile(path, JSON.stringify(student, null, 2), "utf-8")
 }
 
+export function studentInfoFromEnv(): StudentInfo | null {
+  const name = (process.env.NSS_STUDENT_NAME ?? "").trim()
+  const id = (process.env.NSS_STUDENT_ID ?? "").trim()
+  if (name && id) return { name, id }
+  return parseStudentInfo(process.env.NSS_STUDENT ?? "")
+}
+
 export async function resolveStudentInfo(): Promise<StudentInfo | null> {
   const fromConfig = await loadStudentConfig()
   if (fromConfig) return fromConfig
-  const fromEnv = parseStudentInfo(process.env.NSS_STUDENT ?? "")
+  const fromEnv = studentInfoFromEnv()
   if (fromEnv) {
     await saveStudentConfig(fromEnv)
     return fromEnv

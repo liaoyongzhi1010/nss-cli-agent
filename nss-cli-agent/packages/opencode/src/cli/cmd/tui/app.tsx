@@ -511,16 +511,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         })
       }
     })
-    setTimeout(async () => {
-      const student = await resolveStudentInfo()
-      if (!student) {
-        await DialogAlert.show(
-          dialog,
-          "欢迎使用 nss-cli · 请先设置学生信息",
-          '检测到尚未配置学生信息（做课程实验、生成报告时需要）。\n\n请退出后设置环境变量，再启动 nsscli：\nexport NSS_STUDENT="姓名 学号"（例如：张三 20240001）\n\n首次执行后会自动保存到 ~/.config/nss-cli/student.json，以后无需再设。\n\n（若你只是用 nsscli 做开发、不做课程实验，可忽略本提示。）',
-        )
-      }
-    }, 500)
   })
 
   let continued = false
@@ -666,7 +656,16 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         suggested: true,
         category: "Agent",
         slashName: "lesson",
-        run: () => {
+        run: async () => {
+          const student = await resolveStudentInfo()
+          if (!student) {
+            await DialogAlert.show(
+              dialog,
+              "请先设置学生信息",
+              '课程实验需要先配置学生信息（姓名+学号）才能开始。\n\n请退出 nsscli，设置环境变量后重新启动：\nexport NSS_STUDENT_NAME="张三"\nexport NSS_STUDENT_ID="20240001"\n\n首次执行后会自动保存到 ~/.config/nss-cli/student.json，以后无需再设。',
+            )
+            return
+          }
           const lesson = useLesson()
           const showActions = () => {
             dialog.replace(() => (
@@ -697,7 +696,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                     await DialogAlert.show(
                       dialog,
                       "请先设置学生信息",
-                      '首次使用请设置学生信息，之后会自动记住、换实验无需重输。\n\n方式：启动 nsscli 前设置环境变量\nexport NSS_STUDENT="张三 20240001"\n\n设置后重新启动 nsscli，执行一次 report 即会保存到配置（~/.config/nss-cli/student.json），以后不用再设。',
+                      '首次使用请设置学生信息，之后会自动记住、换实验无需重输。\n\n方式：启动 nsscli 前设置环境变量\nexport NSS_STUDENT_NAME="张三"\nexport NSS_STUDENT_ID="20240001"\n\n设置后重新启动 nsscli，执行一次 report 即会保存到配置（~/.config/nss-cli/student.json），以后不用再设。',
                     )
                     return
                   }
