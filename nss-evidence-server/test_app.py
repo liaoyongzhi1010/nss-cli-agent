@@ -8,6 +8,16 @@ from fastapi.testclient import TestClient
 from app import app, get_db_path, get_secret
 
 
+def login(client):
+    resp = client.post(
+        "/login",
+        data={"username": "admin", "password": "nsscli2026"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    return client
+
+
 def test_start_run_returns_run_id_and_server_time(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
@@ -74,6 +84,7 @@ def test_homepage_serves_teacher_dashboard(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     response = client.get("/")
 
     assert response.status_code == 200
@@ -86,6 +97,7 @@ def test_list_runs_returns_recent_submissions(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     start = client.post(
         "/runs/start",
         json={
@@ -114,6 +126,7 @@ def test_schema_has_status_and_verify_columns(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={
@@ -133,6 +146,7 @@ def test_start_run_supersedes_previous_active_run(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     payload = {
         "student_name": "张三",
         "student_id": "20240001",
@@ -153,6 +167,7 @@ def test_get_run_returns_saved_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={
@@ -180,6 +195,7 @@ def test_finalize_returns_signature_and_marks_verified(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={
@@ -237,6 +253,7 @@ def test_verify_confirms_valid_signature(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={
@@ -264,6 +281,7 @@ def test_verify_detects_tampered_signature(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={
@@ -301,6 +319,7 @@ def test_delete_run_soft_deletes(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={
@@ -323,6 +342,7 @@ def test_list_runs_filters_by_status(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
+    login(client)
     payload = {
         "student_name": "张三",
         "student_id": "20240001",
@@ -339,27 +359,51 @@ def test_list_runs_filters_by_status(tmp_path, monkeypatch):
     assert len(response_all.json()["runs"]) == 2
 
 
-def test_teacher_routes_require_password_when_set(tmp_path, monkeypatch):
+def test_teacher_routes_require_login(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
-    monkeypatch.setenv("NSS_TEACHER_PASSWORD", "s3cret")
 
     client = TestClient(app)
 
-    assert client.get("/").status_code == 401
+    # without login: HTML page redirects to /login, API returns 401
+    page = client.get("/", follow_redirects=False)
+    assert page.status_code == 303
+    assert page.headers["location"] == "/login"
     assert client.get("/api/runs").status_code == 401
 
-    ok = client.get("/api/runs", auth=("teacher", "s3cret"))
-    assert ok.status_code == 200
+    # wrong credentials stay unauthenticated
+    bad = client.post(
+        "/login",
+        data={"username": "admin", "password": "wrong"},
+        follow_redirects=False,
+    )
+    assert bad.status_code == 303
+    assert bad.headers["location"].startswith("/login")
+    assert client.get("/api/runs").status_code == 401
 
-    bad = client.get("/api/runs", auth=("teacher", "wrong"))
-    assert bad.status_code == 401
+    # correct credentials -> cookie set -> access granted
+    login(client)
+    assert client.get("/api/runs").status_code == 200
+    assert client.get("/", follow_redirects=False).status_code == 200
+
+    # logout clears the session
+    client.get("/logout", follow_redirects=False)
+    assert client.get("/api/runs").status_code == 401
 
 
-def test_student_routes_open_without_password(tmp_path, monkeypatch):
+def test_login_page_renders(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
     monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
-    monkeypatch.setenv("NSS_TEACHER_PASSWORD", "s3cret")
+
+    client = TestClient(app)
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert "教师端登录" in resp.text
+
+
+def test_student_routes_open_without_login(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
 
     client = TestClient(app)
 
@@ -382,6 +426,7 @@ def test_pdf_upload_and_teacher_download(tmp_path, monkeypatch):
     monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
 
     client = TestClient(app)
+    login(client)
     run = client.post(
         "/runs/start",
         json={

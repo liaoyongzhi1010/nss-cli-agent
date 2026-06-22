@@ -9,35 +9,50 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 
 app = FastAPI(title="NSS Evidence Server")
 
-_basic = HTTPBasic(auto_error=False)
+SESSION_COOKIE = "nss_teacher"
+
+
+def get_teacher_user() -> str:
+    return os.environ.get("NSS_TEACHER_USER", "admin").strip() or "admin"
 
 
 def get_teacher_password() -> str:
-    return os.environ.get("NSS_TEACHER_PASSWORD", "").strip()
+    return os.environ.get("NSS_TEACHER_PASSWORD", "nsscli2026").strip() or "nsscli2026"
 
 
-def require_teacher(
-    credentials: Optional[HTTPBasicCredentials] = Depends(_basic),
-) -> None:
-    password = get_teacher_password()
-    if not password:
-        return
-    if credentials is None or not secrets.compare_digest(
-        credentials.password, password
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="教师端需要密码",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+def make_session_token() -> str:
+    msg = f"teacher:{get_teacher_user()}".encode("utf-8")
+    return hmac.new(get_secret().encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def credentials_valid(username: str, password: str) -> bool:
+    return secrets.compare_digest(
+        username, get_teacher_user()
+    ) and secrets.compare_digest(password, get_teacher_password())
+
+
+def session_valid(token: Optional[str]) -> bool:
+    if not token:
+        return False
+    return secrets.compare_digest(token, make_session_token())
+
+
+def require_teacher(request: Request) -> None:
+    if not session_valid(request.cookies.get(SESSION_COOKIE)):
+        raise HTTPException(status_code=401, detail="教师端需要登录")
+
+
+def require_teacher_page(request: Request) -> Optional[RedirectResponse]:
+    if not session_valid(request.cookies.get(SESSION_COOKIE)):
+        return RedirectResponse(url="/login", status_code=303)
+    return None
 
 
 def get_pdf_dir() -> Path:
@@ -144,9 +159,92 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, error: str = ""):
+    if session_valid(request.cookies.get(SESSION_COOKIE)):
+        return RedirectResponse(url="/", status_code=303)
+    err_html = f'<div class="err">{error}</div>' if error else ""
+    return HTMLResponse(
+        """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NSS 教师端 · 登录</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:#e5e7eb;
+      background: radial-gradient(circle at 18% 12%, rgba(34,211,238,.22), transparent 30%),
+        radial-gradient(circle at 82% 0%, rgba(139,92,246,.26), transparent 32%),
+        linear-gradient(135deg,#020617,#0f172a 55%,#111827); }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none;
+      background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+      background-size: 42px 42px; mask-image: linear-gradient(to bottom, rgba(0,0,0,.9), rgba(0,0,0,.1)); }
+    .card { position:relative; width:min(400px, 92vw); background:rgba(15,23,42,.82);
+      border:1px solid rgba(148,163,184,.22); border-radius:22px; padding:34px 30px;
+      backdrop-filter: blur(18px); box-shadow:0 22px 70px rgba(0,0,0,.35); }
+    .eyebrow { color:#22d3ee; letter-spacing:.24em; text-transform:uppercase; font-size:12px; font-weight:700; }
+    h1 { margin:.4rem 0 4px; font-size:26px; }
+    p.sub { color:#94a3b8; margin:0 0 24px; font-size:13px; }
+    label { display:block; font-size:13px; color:#cbd5e1; margin:16px 0 6px; }
+    input { width:100%; padding:12px 13px; border-radius:13px; border:1px solid rgba(148,163,184,.3);
+      background:rgba(2,6,23,.65); color:#e5e7eb; font-size:14px; outline:none; }
+    input:focus { border-color:rgba(34,211,238,.6); box-shadow:0 0 0 3px rgba(34,211,238,.12); }
+    button { margin-top:26px; width:100%; padding:13px; border:none; border-radius:13px; cursor:pointer;
+      background:linear-gradient(135deg,#22d3ee,#8b5cf6); color:#05060f; font-weight:800; font-size:15px;
+      box-shadow:0 12px 30px rgba(34,211,238,.22); }
+    .err { margin-top:16px; color:#fb7185; font-size:13px; }
+  </style>
+</head>
+<body>
+  <form class="card" method="post" action="/login">
+    <div class="eyebrow">NSS · Teacher Console</div>
+    <h1>教师端登录</h1>
+    <p class="sub">证据查验控制台 · 请输入教师账号</p>
+    <label>用户名</label>
+    <input name="username" autocomplete="username" autofocus placeholder="admin" />
+    <label>密码</label>
+    <input name="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+    <button type="submit">登 录</button>
+    __ERR__
+  </form>
+</body>
+</html>
+        """.replace("__ERR__", err_html)
+    )
+
+
+@app.post("/login")
+def login_submit(username: str = Form(""), password: str = Form("")) -> Response:
+    if not credentials_valid(username.strip(), password.strip()):
+        return RedirectResponse(url="/login?error=用户名或密码错误", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(
+        SESSION_COOKIE,
+        make_session_token(),
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 12,
+    )
+    return response
+
+
+@app.get("/logout")
+def logout() -> Response:
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
-def homepage(_: None = Depends(require_teacher)) -> str:
-    return """
+def homepage(request: Request):
+    redirect = require_teacher_page(request)
+    if redirect is not None:
+        return redirect
+    return HTMLResponse("""
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -200,7 +298,10 @@ def homepage(_: None = Depends(require_teacher)) -> str:
         <h1>实验过程证据中心</h1>
         <div class="subtitle">查询学生提交的证据包、服务器时间戳、文件哈希与防伪签名。</div>
       </div>
-      <div class="hero-badge">证据签名 · HMAC-SHA256</div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end">
+        <div class="hero-badge">证据签名 · HMAC-SHA256</div>
+        <a href="/logout" style="color:#94a3b8;font-size:13px;text-decoration:none;border:1px solid rgba(148,163,184,.3);padding:6px 14px;border-radius:999px">退出登录</a>
+      </div>
     </section>
     <section class="grid">
       <div class="card"><div class="label">提交总数</div><div class="metric" id="total">-</div></div>
@@ -257,6 +358,7 @@ def homepage(_: None = Depends(require_teacher)) -> str:
     }
     async function loadRuns() {
       const res = await fetch('/api/runs?status=all')
+      if (res.status === 401) { window.location.href = '/login'; return }
       const data = await res.json()
       allRuns = data.runs
       refreshExerciseOptions()
@@ -329,7 +431,7 @@ def homepage(_: None = Depends(require_teacher)) -> str:
   </script>
 </body>
 </html>
-    """
+    """)
 
 
 @app.get("/api/runs")

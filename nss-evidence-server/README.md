@@ -17,30 +17,33 @@
 
 | 端 | 路径 | 鉴权 | 用途 |
 |----|------|------|------|
-| 教师端 | `/`、`/api/runs`、`/runs/{id}`、`/runs/{id}/verify`、`/runs/{id}/pdf`(下载)、`DELETE /runs/{id}` | **需密码**（见下） | 看表格、查 QA、验证签名、下载 PDF、删除 |
+| 教师端 | `/`、`/api/runs`、`/runs/{id}`、`/runs/{id}/verify`、`/runs/{id}/pdf`(下载)、`DELETE /runs/{id}` | **需登录**（见下） | 看表格、查 QA、验证签名、下载 PDF、删除 |
 | 学生端 | `/student`、`POST /runs/start`、`POST /runs/{id}/finalize`、`POST /runs/{id}/pdf`(上传) | 无需密码 | nsscli 自动上报；学生上传 PDF |
 
 **学生端不是网页**：学生用 `nsscli` 命令行做实验，证据由 nsscli 自动上报。`/student` 网页只用于学生**额外上传 PDF 报告**。
 
-## 教师端密码怎么工作
+## 教师端登录
 
-用的是 **HTTP Basic Auth**，密码不写在任何前端代码里：
+教师端用**自定义登录页**（暗色科技风，和面板统一），不是浏览器原生弹框：
 
-1. 启动服务器时设环境变量 `NSS_TEACHER_PASSWORD`（只在服务器端）。
-2. 教师打开教师端页面时，**浏览器自动弹出登录框**，密码填这个环境变量的值（用户名随意）。
-3. 浏览器把凭据放进 `Authorization` 头发给后端，后端用 `secrets.compare_digest` 比对。
+1. 打开任意教师端地址 → 自动跳转到 `/login` 登录页。
+2. 输入账号密码（默认 **admin / nsscli2026**），登录成功后种一个签名 Cookie（有效期 12 小时），即可访问面板。
+3. 右上角"退出登录"清除会话。
 
-- 未设 `NSS_TEACHER_PASSWORD` 时，教师端**开放无密码**（方便本地开发）。
-- ⚠️ **HTTP Basic 凭据是 base64 编码而非加密**。公网部署**必须套 HTTPS**（如 nginx/caddy 反代加证书），否则密码会明文暴露。内网/本地教学可不强制。
+账号密码可用环境变量覆盖：`NSS_TEACHER_USER`（默认 `admin`）、`NSS_TEACHER_PASSWORD`（默认 `nsscli2026`）。
+
+- Cookie 值是 `HMAC-SHA256(NSS_EVIDENCE_SECRET, "teacher:用户名")`，无密钥无法伪造。
+- ⚠️ 公网部署**必须套 HTTPS**（如 nginx/caddy 反代加证书），否则登录密码与 Cookie 会明文暴露。内网/本地教学可不强制。
 
 ## 环境变量
 
 | 变量 | 说明 | 默认 |
 |------|------|------|
-| `NSS_EVIDENCE_SECRET` | HMAC 签名密钥（必改） | `dev-secret-change-me` |
+| `NSS_EVIDENCE_SECRET` | HMAC 签名密钥（必改，同时用于会话 Cookie） | `dev-secret-change-me` |
 | `NSS_EVIDENCE_DB` | SQLite 数据库路径 | `data/evidence.db` |
 | `NSS_EVIDENCE_PDF_DIR` | PDF 存储目录 | `data/pdf` |
-| `NSS_TEACHER_PASSWORD` | 教师端密码；未设则教师端开放 | （空） |
+| `NSS_TEACHER_USER` | 教师端用户名 | `admin` |
+| `NSS_TEACHER_PASSWORD` | 教师端密码 | `nsscli2026` |
 
 ## 运行
 
@@ -51,16 +54,17 @@ python3 -m venv .venv
 NSS_EVIDENCE_SECRET=change-me \
 NSS_EVIDENCE_DB=data/evidence.db \
 NSS_EVIDENCE_PDF_DIR=data/pdf \
-NSS_TEACHER_PASSWORD=老师密码 \
+NSS_TEACHER_USER=admin \
+NSS_TEACHER_PASSWORD=nsscli2026 \
   .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
 ## 教师使用
 
-1. 浏览器打开 `http://<host>:8000/`，在弹框输入 `NSS_TEACHER_PASSWORD` 设的密码。
+1. 浏览器打开 `http://<host>:8000/`，自动跳到登录页，输入 **admin / nsscli2026**。
 2. 表格按姓名/学号/实验/状态筛选，列含：开始时间、提交时间、证据哈希/签名、**查看报告(QA)**、操作。
 3. 点 **查看 QA** 看学生与 AI 的完整实验对话（空对话显示"无对话记录"）。
-4. 点 **PDF**（若学生上传过）下载报告；点 **验证** 校验签名有效性。
+4. 点 **PDF**（若学生上传过）下载报告；点 **验证** 校验签名有效性；右上角 **退出登录**。
 
 ## 学生使用
 
@@ -84,10 +88,11 @@ curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/finalize \
 curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/pdf \
   -F "file=@report.pdf;type=application/pdf"
 
-# 教师查询 / 验证 / 下载（需密码）
-curl -s -u teacher:老师密码 http://127.0.0.1:8000/runs/<run_id>
-curl -s -u teacher:老师密码 http://127.0.0.1:8000/runs/<run_id>/verify
-curl -s -u teacher:老师密码 http://127.0.0.1:8000/runs/<run_id>/pdf -o report.pdf
+# 教师查询 / 验证 / 下载（需先登录拿 Cookie）
+curl -s -c ck.txt -X POST http://127.0.0.1:8000/login -d "username=admin&password=nsscli2026"
+curl -s -b ck.txt http://127.0.0.1:8000/runs/<run_id>
+curl -s -b ck.txt http://127.0.0.1:8000/runs/<run_id>/verify
+curl -s -b ck.txt http://127.0.0.1:8000/runs/<run_id>/pdf -o report.pdf
 ```
 
 ## 测试
