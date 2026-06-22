@@ -398,6 +398,25 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const project = useProject()
   const exit = useExit()
   const promptRef = usePromptRef()
+  const extractQATranscript = (): string => {
+    if (route.data.type !== "session") return ""
+    const sessionID = route.data.sessionID
+    const messages = sync.data.message[sessionID] ?? []
+    const blocks: string[] = []
+    for (const msg of messages) {
+      const role = (msg as any).role
+      if (role !== "user" && role !== "assistant") continue
+      const parts = sync.data.part[msg.id] ?? []
+      const text = parts
+        .filter((p: any) => p.type === "text" && p.text)
+        .map((p: any) => p.text)
+        .join("\n")
+        .trim()
+      if (!text) continue
+      blocks.push(`## ${role === "user" ? "学生" : "AI"}\n\n${text}`)
+    }
+    return blocks.join("\n\n")
+  }
   const routes: RouteMap = new Map()
   const [routeRev, setRouteRev] = createSignal(0)
   const routeView = (name: string) => {
@@ -688,7 +707,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   const dir = getLessonDir(cwd, sel)
                   let meta = await loadEvidenceMeta(cwd, sel)
                   if (meta) {
-                    await DialogAlert.show(dialog, "已有报告", "该实验已生成过报告，请直接编辑 report.md 后在 /lesson 选择 submit。")
+                    await DialogAlert.show(dialog, "已有报告", "该实验已生成过报告并签名定版，无需重复生成。可直接查看 report.md。")
                     return
                   }
                   const student = await resolveStudentInfo()
@@ -704,51 +723,23 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                     meta = await startEvidenceRun(cwd, sel, student)
                     const files = await collectFileEvidence(dir)
                     await writeReportWithFiles({ dir, title: sel.title, meta, files })
-                    await DialogAlert.show(
-                      dialog,
-                      "✅ 报告初版已生成",
-                      `学生：${student.name}（${student.id}）\n已根据实验代码生成 ${shortenHome(dir)}/report.md（含 ${files.length} 个文件）\n\n接下来 AI 会基于你的代码自动补全报告初版，你可以在此基础上修改。改好后回到 /lesson 选择 submit 提交定版。`,
-                    )
-                    promptRef.current?.set({
-                      input: `请阅读当前实验目录下的 README.md、solution.py（及其它实验代码）和 report.md，然后基于学生实际写的代码，把 ${dir}/report.md 补全成一份完整的实验报告初版：填写实验目标、操作时间线、实现要点（从抽象到代码的映射）、遇到的问题与解决、结论与反思。保留"基本信息"和"代码文件清单"两节不要改动。直接编辑 report.md 文件，写完后告诉学生可以检查修改，满意后用 /lesson 的 submit 提交。`,
-                      parts: [],
-                    })
-                    promptRef.current?.submit()
-                  } catch (err) {
-                    await DialogAlert.show(dialog, "报告生成失败", err instanceof Error ? err.message : String(err))
-                  }
-                }}
-                onSubmit={async (sel) => {
-                  const cwd = process.env.PWD || process.cwd()
-                  const dir = getLessonDir(cwd, sel)
-                  const meta = await loadEvidenceMeta(cwd, sel)
-                  if (!meta) {
-                    await DialogAlert.show(dialog, "请先 report", "该实验尚未初始化报告，请先在 /lesson 选择 report。")
-                    return
-                  }
-                  try {
-                    const { readFile, writeFile } = await import("fs/promises")
+                    const qa = extractQATranscript()
+                    const result = await finalizeEvidence(meta, qa)
+                    const { writeFile } = await import("fs/promises")
                     const { join } = await import("path")
                     const reportPath = join(dir, "report.md")
-                    let reportMd: string
-                    try {
-                      reportMd = await readFile(reportPath, "utf-8")
-                    } catch {
-                      await DialogAlert.show(dialog, "未找到报告", "请先编写 report.md 再提交。")
-                      return
-                    }
-                    const files = await collectFileEvidence(dir)
-                    const result = await finalizeEvidence(meta, reportMd, files)
+                    const { readFile } = await import("fs/promises")
+                    let reportMd = ""
+                    try { reportMd = await readFile(reportPath, "utf-8") } catch {}
                     const appendix = evidenceAppendix(result)
-                    const finalContent = reportMd.replace(/\n## 服务器证据签名[\s\S]*$/, "") + appendix
-                    await writeFile(reportPath, finalContent, "utf-8")
+                    await writeFile(reportPath, reportMd.replace(/\n## 服务器证据签名[\s\S]*$/, "") + appendix, "utf-8")
                     await DialogAlert.show(
                       dialog,
-                      "✅ 提交成功",
-                      `报告已定版并签名（${result.signature.slice(0, 16)}...）\n\n教师可在证据面板查看你的提交与验证状态。`,
+                      "✅ 报告已生成并签名",
+                      `学生：${student.name}（${student.id}）\n报告：${shortenHome(dir)}/report.md（含 ${files.length} 个文件）\n实验过程对话：${qa ? "已记录并签名" : "未检测到对话(QA为空)"}\n签名：${result.signature.slice(0, 16)}...\n\n教师可在证据面板查看你的提交与实验过程。`,
                     )
                   } catch (err) {
-                    await DialogAlert.show(dialog, "提交失败", err instanceof Error ? err.message : String(err))
+                    await DialogAlert.show(dialog, "报告生成失败", err instanceof Error ? err.message : String(err))
                   }
                 }}
               />

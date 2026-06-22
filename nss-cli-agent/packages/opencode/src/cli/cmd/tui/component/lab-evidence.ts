@@ -336,16 +336,16 @@ export interface FinalizeResult {
   signature: string
 }
 
-export async function finalizeEvidence(meta: EvidenceMeta, reportMarkdown: string, files: EvidenceFileInfo[]): Promise<FinalizeResult> {
+export async function finalizeEvidence(meta: EvidenceMeta, qaTranscript: string): Promise<FinalizeResult> {
   let response: Response
   try {
     response = await fetch(`${meta.evidenceServer}/runs/${meta.runId}/finalize`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ final_report_markdown: reportMarkdown, files }),
+      body: JSON.stringify({ qa_transcript: qaTranscript }),
     })
   } catch {
-    throw new Error(`无法连接证据服务器（${meta.evidenceServer}）。请确认证据后端已启动后重试 submit。`)
+    throw new Error(`无法连接证据服务器（${meta.evidenceServer}）。请确认证据后端已启动后重试。`)
   }
   if (!response.ok) {
     const text = await response.text()
