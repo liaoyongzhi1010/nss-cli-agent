@@ -135,14 +135,15 @@ def homepage() -> str:
     .card { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:18px; backdrop-filter: blur(18px); box-shadow:0 18px 60px rgba(0,0,0,.22); }
     .metric { font-size:28px; font-weight:800; margin-top:8px; }
     .label { color:var(--muted); font-size:13px; }
-    .toolbar { display:flex; gap:12px; margin:22px 0; }
-    input { flex:1; background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:14px 16px; border-radius:14px; outline:none; }
-    button { border:0; border-radius:14px; padding:14px 18px; color:#06111f; font-weight:800; cursor:pointer; background:linear-gradient(135deg,var(--cyan),#a78bfa); }
-    table { width:100%; border-collapse:collapse; overflow:hidden; border-radius:18px; }
-    th, td { text-align:left; padding:14px 16px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:top; }
+    .toolbar { display:flex; gap:12px; margin:22px 0; align-items:center; }
+    input { flex:1; background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:12px 16px; border-radius:12px; outline:none; height:44px; }
+    button { border:0; border-radius:12px; padding:0 18px; height:44px; color:#06111f; font-weight:800; cursor:pointer; background:linear-gradient(135deg,var(--cyan),#a78bfa); }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; border-radius:18px; }
+    th, td { text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:middle; white-space:nowrap; }
     th { color:#bae6fd; background:rgba(15,23,42,.92); position:sticky; top:0; }
     tr:hover td { background:rgba(34,211,238,.06); }
-    code { color:#a5f3fc; word-break:break-all; }
+    code { color:#a5f3fc; }
     .ok { color:var(--green); font-weight:700; }
     .empty { color:var(--muted); padding:28px; text-align:center; }
     .details { white-space:pre-wrap; background:rgba(2,6,23,.75); border:1px solid var(--line); border-radius:14px; padding:14px; max-height:360px; overflow:auto; }
@@ -151,8 +152,10 @@ def homepage() -> str:
     .badge-pending { background:rgba(148,163,184,.12); color:var(--muted); border:1px solid rgba(148,163,184,.25); }
     .badge-superseded { background:rgba(251,146,60,.12); color:#fb923c; border:1px solid rgba(251,146,60,.25); }
     .badge-deleted { background:rgba(251,113,133,.12); color:var(--red); border:1px solid rgba(251,113,133,.25); }
-    select { background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:14px 16px; border-radius:14px; outline:none; }
-    .btn-verify { font-size:12px; padding:6px 12px; border-radius:10px; }
+    select { background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:0 16px; border-radius:12px; outline:none; height:44px; cursor:pointer; min-width:130px; }
+    .btn-sm { font-size:12px; font-weight:700; padding:6px 14px; height:30px; border-radius:8px; background:rgba(34,211,238,.12); color:var(--cyan); border:1px solid rgba(34,211,238,.3); }
+    .btn-sm:hover { background:rgba(34,211,238,.22); }
+    td .btn-sm + .btn-sm { margin-left:8px; }
     @media (max-width: 820px) { .hero { display:block; } .grid { grid-template-columns:1fr 1fr; } h1 { font-size:34px; } }
   </style>
 </head>
@@ -174,10 +177,12 @@ def homepage() -> str:
     </section>
     <section class="card">
       <div class="toolbar">
-        <input id="query" placeholder="输入提交编号 / 学号 / 姓名 / 实验编号搜索" />
+        <input id="query" placeholder="搜索：提交编号 / 学号 / 姓名 / 实验" />
+        <select id="exerciseFilter"><option value="">全部实验</option></select>
         <select id="statusFilter">
-          <option value="active">仅活跃</option>
-          <option value="all">全部</option>
+          <option value="">全部状态</option>
+          <option value="verified">已验证</option>
+          <option value="pending">待提交</option>
           <option value="superseded">已取代</option>
           <option value="deleted">已删除</option>
         </select>
@@ -188,34 +193,69 @@ def homepage() -> str:
   </main>
   <script>
     const el = (id) => document.getElementById(id)
+    let allRuns = []
+    function statusKey(r) {
+      if (r.status === 'deleted') return 'deleted'
+      if (r.status === 'superseded') return 'superseded'
+      if (r.verify_status === 'verified') return 'verified'
+      return 'pending'
+    }
     function renderBadge(r) {
-      if (r.verify_status === 'verified') return '<span class="badge badge-verified">✅已验证</span>'
-      if (r.status === 'superseded') return '<span class="badge badge-superseded">🔄已取代</span>'
-      if (r.status === 'deleted') return '<span class="badge badge-deleted">🗑已删除</span>'
-      if (!r.signature) return '<span class="badge badge-pending">📝待提交</span>'
+      const k = statusKey(r)
+      if (k === 'verified') return '<span class="badge badge-verified">✅已验证</span>'
+      if (k === 'superseded') return '<span class="badge badge-superseded">🔄已取代</span>'
+      if (k === 'deleted') return '<span class="badge badge-deleted">🗑已删除</span>'
       return '<span class="badge badge-pending">📝待提交</span>'
     }
+    function fmtTime(t) {
+      if (!t) return '-'
+      return t.replace('T', ' ').replace('Z', '').split('.')[0]
+    }
+    function shortHash(h) {
+      if (!h) return '-'
+      return h.length > 24 ? h.slice(0, 12) + '…' + h.slice(-8) : h
+    }
+    function refreshExerciseOptions() {
+      const sel = el('exerciseFilter')
+      const current = sel.value
+      const ids = [...new Set(allRuns.map(r => r.exercise_id))].sort()
+      sel.innerHTML = '<option value="">全部实验</option>' + ids.map(id => `<option value="${id}">${id}</option>`).join('')
+      sel.value = current
+    }
     async function loadRuns() {
-      const q = el('query').value.trim().toLowerCase()
-      const status = el('statusFilter').value
-      const res = await fetch('/api/runs?status=' + encodeURIComponent(status))
+      const res = await fetch('/api/runs?status=all')
       const data = await res.json()
-      const runs = data.runs.filter(r => !q || [r.run_id,r.student_id,r.student_name,r.exercise_id].some(v => String(v || '').toLowerCase().includes(q)))
-      el('total').textContent = data.runs.length
-      el('verified').textContent = data.runs.filter(r => r.verify_status === 'verified').length
-      el('pending').textContent = data.runs.filter(r => !r.signature).length
-      el('students').textContent = new Set(data.runs.map(r => r.student_id)).size
-      if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无提交记录</div>'; return }
-      el('table').innerHTML = '<table><thead><tr><th>学生</th><th>实验</th><th>提交编号</th><th>状态</th><th>服务器时间</th><th>证据哈希 / 签名</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
+      allRuns = data.runs
+      refreshExerciseOptions()
+      render()
+    }
+    function render() {
+      const q = el('query').value.trim().toLowerCase()
+      const exFilter = el('exerciseFilter').value
+      const stFilter = el('statusFilter').value
+      const runs = allRuns.filter(r => {
+        if (exFilter && r.exercise_id !== exFilter) return false
+        if (stFilter && statusKey(r) !== stFilter) return false
+        if (q && ![r.run_id, r.student_id, r.student_name, r.exercise_id].some(v => String(v || '').toLowerCase().includes(q))) return false
+        return true
+      })
+      el('total').textContent = allRuns.length
+      el('verified').textContent = allRuns.filter(r => statusKey(r) === 'verified').length
+      el('pending').textContent = allRuns.filter(r => statusKey(r) === 'pending').length
+      el('students').textContent = new Set(allRuns.map(r => r.student_id)).size
+      if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无符合条件的记录</div>'; return }
+      el('table').innerHTML = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>实验</th><th>状态</th><th>提交编号</th><th>开始时间</th><th>提交时间</th><th>证据哈希 / 签名</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
         <tr>
-          <td><b>${r.student_name}</b><br><code>${r.student_id}</code></td>
+          <td><b>${r.student_name}</b></td>
+          <td><code>${r.student_id}</code></td>
           <td>${r.exercise_id}</td>
-          <td><code>${r.run_id}</code></td>
           <td>${renderBadge(r)}</td>
-          <td>${r.server_submitted_at || r.server_started_at || '-'}</td>
-          <td><code>${r.evidence_hash || '-'}</code><br><code>${r.signature || '-'}</code></td>
-          <td>${r.signature ? '<button class="btn-verify" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button> ' : ''}<button onclick="showRun('${r.run_id}')">查看</button></td>
-        </tr>`).join('') + '</tbody></table><div id="detail" style="margin-top:16px"></div>'
+          <td><code>${r.run_id}</code></td>
+          <td>${fmtTime(r.server_started_at)}</td>
+          <td>${fmtTime(r.server_submitted_at)}</td>
+          <td><code title="${r.evidence_hash || ''}">${shortHash(r.evidence_hash)}</code><br><code title="${r.signature || ''}">${shortHash(r.signature)}</code></td>
+          <td>${r.signature ? '<button class="btn-sm" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button>' : ''}<button class="btn-sm" onclick="showRun('${r.run_id}')">查看</button></td>
+        </tr>`).join('') + '</tbody></table></div><div id="detail" style="margin-top:16px"></div>'
     }
     async function verifyRun(id, btn) {
       btn.disabled = true
@@ -237,8 +277,9 @@ def homepage() -> str:
       const run = await res.json()
       document.getElementById('detail').innerHTML = '<div class="details">' + JSON.stringify(run, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</div>'
     }
-    el('query').addEventListener('input', loadRuns)
-    el('statusFilter').addEventListener('change', loadRuns)
+    el('query').addEventListener('input', render)
+    el('exerciseFilter').addEventListener('change', render)
+    el('statusFilter').addEventListener('change', render)
     loadRuns()
   </script>
 </body>
