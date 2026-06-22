@@ -663,12 +663,12 @@ def student_page() -> str:
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 0;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:#e5e7eb;
       background: radial-gradient(circle at 20% 10%, rgba(34,211,238,.22), transparent 30%),
         radial-gradient(circle at 80% 0%, rgba(139,92,246,.26), transparent 32%),
         linear-gradient(135deg,#020617,#0f172a 55%,#111827); }
-    .card { width:min(560px, 92vw); background:rgba(15,23,42,.82); border:1px solid rgba(148,163,184,.22);
+    .card { width:min(600px, 92vw); background:rgba(15,23,42,.82); border:1px solid rgba(148,163,184,.22);
       border-radius:20px; padding:32px; backdrop-filter: blur(18px); box-shadow:0 18px 60px rgba(0,0,0,.3); }
     .eyebrow { color:#22d3ee; letter-spacing:.22em; text-transform:uppercase; font-size:12px; font-weight:700; }
     h1 { margin:.35rem 0 4px; font-size:26px; }
@@ -676,52 +676,193 @@ def student_page() -> str:
     label { display:block; font-size:13px; color:#cbd5e1; margin:14px 0 6px; }
     input { width:100%; padding:11px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.3);
       background:rgba(2,6,23,.6); color:#e5e7eb; font-size:14px; }
-    button { margin-top:22px; width:100%; padding:12px; border:none; border-radius:12px; cursor:pointer;
-      background:linear-gradient(135deg,#22d3ee,#8b5cf6); color:#05060f; font-weight:700; font-size:15px; }
+    input:focus { outline:none; border-color:rgba(34,211,238,.6); box-shadow:0 0 0 3px rgba(34,211,238,.12); }
+    button { margin-top:8px; padding:11px 16px; border:none; border-radius:12px; cursor:pointer;
+      background:linear-gradient(135deg,#22d3ee,#8b5cf6); color:#05060f; font-weight:700; font-size:14px; }
     button:disabled { opacity:.5; cursor:not-allowed; }
-    #msg { margin-top:16px; font-size:14px; min-height:20px; }
+    button.ghost { background:transparent; border:1px solid rgba(148,163,184,.35); color:#cbd5e1; }
+    #msg { margin-top:14px; font-size:14px; min-height:20px; }
     .ok { color:#34d399; } .err { color:#fb7185; }
+    .runs { margin-top:22px; display:flex; flex-direction:column; gap:10px; }
+    .run { border:1px solid rgba(148,163,184,.22); border-radius:14px; padding:14px; background:rgba(2,6,23,.4); }
+    .run h3 { margin:0 0 4px; font-size:15px; }
+    .run .meta { color:#94a3b8; font-size:12px; margin-bottom:10px; }
+    .run .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .pill { font-size:12px; padding:3px 10px; border-radius:999px; }
+    .pill.has { background:rgba(52,211,153,.15); color:#34d399; }
+    .pill.no { background:rgba(251,113,133,.15); color:#fb7185; }
+    a.link { color:#22d3ee; font-size:13px; text-decoration:none; }
+    .empty { color:#94a3b8; font-size:14px; margin-top:18px; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="eyebrow">NSS · Student</div>
-    <h1>实验报告 PDF 上传</h1>
-    <p class="sub">PDF 仅供教师阅读，不参与签名验证。请填写你 report 时生成的提交编号（run_id），并选择报告 PDF 文件。</p>
-    <label>提交编号 run_id</label>
-    <input id="runId" placeholder="run_xxxxxxxx" />
-    <label>报告 PDF</label>
-    <input id="file" type="file" accept="application/pdf" />
-    <button id="btn">上传</button>
+    <h1>实验报告 PDF</h1>
+    <p class="sub">PDF 仅供教师阅读，不参与签名验证。输入你的学号查询你做过的实验，每个实验以你<b>最新一次</b>提交为准，可预览/替换 PDF。</p>
+    <label>学号</label>
+    <input id="sid" placeholder="如 20240001" />
+    <button id="queryBtn">查询我的实验</button>
     <div id="msg"></div>
+    <div class="runs" id="runs"></div>
   </div>
   <script>
     const $ = id => document.getElementById(id)
-    $('btn').onclick = async () => {
-      const runId = $('runId').value.trim()
-      const file = $('file').files[0]
-      const msg = $('msg')
-      msg.textContent = ''; msg.className = ''
-      if (!runId) { msg.textContent = '请填写提交编号 run_id'; msg.className = 'err'; return }
-      if (!file) { msg.textContent = '请选择 PDF 文件'; msg.className = 'err'; return }
+    const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))
+    function fmt(t){ if(!t) return '-'; try{ return new Date(t).toLocaleString('zh-CN') }catch(e){ return t } }
+    let currentSid = ''
+
+    $('queryBtn').onclick = query
+    $('sid').addEventListener('keydown', e => { if (e.key === 'Enter') query() })
+
+    async function query() {
+      const sid = $('sid').value.trim()
+      const msg = $('msg'); msg.textContent = ''; msg.className = ''
+      $('runs').innerHTML = ''
+      if (!sid) { msg.textContent = '请输入学号'; msg.className = 'err'; return }
+      currentSid = sid
+      const res = await fetch('/api/student/runs?student_id=' + encodeURIComponent(sid))
+      const data = await res.json().catch(() => ({runs:[]}))
+      const runs = data.runs || []
+      if (!runs.length) { $('runs').innerHTML = '<div class="empty">没有查询到该学号的实验提交。请先用 nsscli 做实验并 report。</div>'; return }
+      $('runs').innerHTML = runs.map(r => `
+        <div class="run">
+          <h3>${esc(r.exercise_id)}</h3>
+          <div class="meta">最新提交：${fmt(r.server_submitted_at)} · 提交编号 ${esc(r.run_id)}</div>
+          <div class="row">
+            ${r.has_pdf
+              ? '<span class="pill has">已上传 PDF</span> <a class="link" href="/student/pdf?student_id='+encodeURIComponent(currentSid)+'&exercise_id='+encodeURIComponent(r.exercise_id)+'" target="_blank">预览当前 PDF</a>'
+              : '<span class="pill no">未上传 PDF</span>'}
+          </div>
+          <div class="row" style="margin-top:12px">
+            <input type="file" accept="application/pdf" data-ex="${esc(r.exercise_id)}" />
+            <button class="ghost" data-ex="${esc(r.exercise_id)}">${r.has_pdf ? '替换 PDF' : '上传 PDF'}</button>
+          </div>
+        </div>`).join('')
+      $('runs').querySelectorAll('button.ghost').forEach(btn => {
+        btn.onclick = () => upload(btn.dataset.ex, btn)
+      })
+    }
+
+    async function upload(exerciseId, btn) {
+      const card = btn.closest('.run')
+      const fileInput = card.querySelector('input[type=file]')
+      const file = fileInput.files[0]
+      const msg = $('msg'); msg.textContent = ''; msg.className = ''
+      if (!file) { msg.textContent = '请先选择该实验的 PDF 文件'; msg.className = 'err'; return }
       const fd = new FormData()
+      fd.append('student_id', currentSid)
+      fd.append('exercise_id', exerciseId)
       fd.append('file', file)
-      $('btn').disabled = true; $('btn').textContent = '上传中...'
+      btn.disabled = true; const old = btn.textContent; btn.textContent = '上传中...'
       try {
-        const res = await fetch('/runs/' + encodeURIComponent(runId) + '/pdf', { method: 'POST', body: fd })
+        const res = await fetch('/student/pdf', { method: 'POST', body: fd })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.detail || ('上传失败 (' + res.status + ')'))
-        msg.textContent = '✅ 上传成功，教师可在面板查看你的报告 PDF。'; msg.className = 'ok'
+        msg.textContent = '✅ ' + exerciseId + ' 的报告 PDF 上传成功。'; msg.className = 'ok'
+        await query()
       } catch (e) {
         msg.textContent = '❌ ' + e.message; msg.className = 'err'
-      } finally {
-        $('btn').disabled = false; $('btn').textContent = '上传'
+        btn.disabled = false; btn.textContent = old
       }
     }
   </script>
 </body>
 </html>
     """
+
+
+def _latest_run(conn, student_id: str, exercise_id: str):
+    return conn.execute(
+        """
+        SELECT * FROM runs
+        WHERE student_id = ? AND exercise_id = ? AND status = 'active'
+        ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
+        LIMIT 1
+        """,
+        (student_id, exercise_id),
+    ).fetchone()
+
+
+@app.get("/api/student/runs")
+def student_runs(student_id: str) -> Dict[str, Any]:
+    student_id = (student_id or "").strip()
+    if not student_id:
+        raise HTTPException(status_code=400, detail="缺少学号")
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT run_id, exercise_id, server_submitted_at, server_started_at, pdf_path
+            FROM runs
+            WHERE student_id = ? AND status = 'active'
+            ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
+            """,
+            (student_id,),
+        ).fetchall()
+    latest: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        ex = row["exercise_id"]
+        if ex in latest:
+            continue
+        latest[ex] = {
+            "run_id": row["run_id"],
+            "exercise_id": ex,
+            "server_submitted_at": row["server_submitted_at"],
+            "has_pdf": bool(row["pdf_path"]),
+        }
+    return {"runs": list(latest.values())}
+
+
+@app.post("/student/pdf")
+async def student_upload_pdf(
+    student_id: str = Form(...),
+    exercise_id: str = Form(...),
+    file: UploadFile = File(...),
+) -> Dict[str, str]:
+    student_id = student_id.strip()
+    exercise_id = exercise_id.strip()
+    if not student_id or not exercise_id:
+        raise HTTPException(status_code=400, detail="缺少学号或实验")
+
+    filename = file.filename or ""
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
+
+    with connect() as conn:
+        row = _latest_run(conn, student_id, exercise_id)
+        if row is None:
+            raise HTTPException(
+                status_code=404, detail="未找到该学号该实验的提交，请先 report"
+            )
+        run_id = row["run_id"]
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件为空")
+    dest = get_pdf_dir() / f"{run_id}.pdf"
+    dest.write_bytes(content)
+
+    with connect() as conn:
+        conn.execute(
+            "UPDATE runs SET pdf_path = ? WHERE run_id = ?", (str(dest), run_id)
+        )
+        conn.commit()
+
+    return {"run_id": run_id, "status": "uploaded"}
+
+
+@app.get("/student/pdf")
+def student_preview_pdf(student_id: str, exercise_id: str) -> FileResponse:
+    student_id = (student_id or "").strip()
+    exercise_id = (exercise_id or "").strip()
+    with connect() as conn:
+        row = _latest_run(conn, student_id, exercise_id)
+    if row is None or not row["pdf_path"]:
+        raise HTTPException(status_code=404, detail="该实验还没有上传 PDF")
+    path = Path(row["pdf_path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="PDF 文件已丢失")
+    return FileResponse(path, media_type="application/pdf")
 
 
 @app.post("/runs/{run_id}/pdf")

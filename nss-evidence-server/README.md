@@ -18,7 +18,7 @@
 | 端 | 路径 | 鉴权 | 用途 |
 |----|------|------|------|
 | 教师端 | `/`、`/api/runs`、`/runs/{id}`、`/runs/{id}/verify`、`/runs/{id}/pdf`(下载)、`DELETE /runs/{id}` | **需登录**（见下） | 看表格、查 QA、验证签名、下载 PDF、删除 |
-| 学生端 | `/student`、`POST /runs/start`、`POST /runs/{id}/finalize`、`POST /runs/{id}/pdf`(上传) | 无需密码 | nsscli 自动上报；学生上传 PDF |
+| 学生端 | `/student`、`GET /api/student/runs`、`POST /student/pdf`、`GET /student/pdf`、`POST /runs/start`、`POST /runs/{id}/finalize` | 无需登录 | nsscli 自动上报；学生按学号查/预览/上传 PDF（以最新提交为准） |
 
 **学生端不是网页**：学生用 `nsscli` 命令行做实验，证据由 nsscli 自动上报。`/student` 网页只用于学生**额外上传 PDF 报告**。
 
@@ -68,8 +68,8 @@ NSS_TEACHER_PASSWORD=nsscli2026 \
 
 ## 学生使用
 
-- 做实验：在终端用 `nsscli`，`/lesson` → init 开始、report 生成并签名上传（自动采集 QA）。
-- 交 PDF（可选）：浏览器打开 `http://<host>:8000/student`，填 report 时得到的提交编号 `run_id` + 选 PDF 上传。
+- 做实验：在终端用 `nsscli`，`/lesson` → init 开始、report 生成并签名上传（自动采集 QA）。可反复重做，**每次以最新一次提交为准**，历史版本在教师端保留。
+- 交 / 看 PDF（可选）：浏览器打开 `http://<host>:8000/student`，输入**学号**点"查询我的实验"，列出你做过的每个实验（以最新提交为准），可**预览当前 PDF** 或选文件**上传/替换**。无需填 run_id、无需登录。
 
 ## 关键 API
 
@@ -84,9 +84,14 @@ curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/finalize \
   -H 'content-type: application/json' \
   -d '{"qa_transcript":"## 学生\n...\n\n## AI\n..."}'
 
-# 学生上传 PDF（无需密码）
-curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/pdf \
+# 学生上传 PDF（无需登录，按学号+实验挂到最新提交）
+curl -s -X POST http://127.0.0.1:8000/student/pdf \
+  -F "student_id=20240001" -F "exercise_id=crypto-basic" \
   -F "file=@report.pdf;type=application/pdf"
+
+# 学生查询自己的实验 / 预览自己的 PDF（无需登录）
+curl -s "http://127.0.0.1:8000/api/student/runs?student_id=20240001"
+curl -s "http://127.0.0.1:8000/student/pdf?student_id=20240001&exercise_id=crypto-basic" -o my.pdf
 
 # 教师查询 / 验证 / 下载（需先登录拿 Cookie）
 curl -s -c ck.txt -X POST http://127.0.0.1:8000/login -d "username=admin&password=nsscli2026"

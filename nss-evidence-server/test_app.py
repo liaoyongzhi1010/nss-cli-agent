@@ -487,3 +487,98 @@ def test_pdf_upload_unknown_run_returns_404(tmp_path, monkeypatch):
         files={"file": ("report.pdf", b"%PDF-1.4", "application/pdf")},
     )
     assert resp.status_code == 404
+
+
+def _start(client, student_id, exercise_id, name="张三"):
+    return client.post(
+        "/runs/start",
+        json={
+            "student_name": name,
+            "student_id": student_id,
+            "exercise_id": exercise_id,
+            "computer": {},
+        },
+    ).json()
+
+
+def test_student_runs_returns_latest_per_exercise(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    # two runs of same exercise: the second supersedes the first
+    _start(client, "20240001", "crypto-basic")
+    second = _start(client, "20240001", "crypto-basic")
+    _start(client, "20240001", "web-sec")
+
+    resp = client.get("/api/student/runs?student_id=20240001")
+    assert resp.status_code == 200
+    runs = resp.json()["runs"]
+    exercises = {r["exercise_id"]: r for r in runs}
+    # one entry per exercise, crypto-basic points to the latest (active) run
+    assert set(exercises) == {"crypto-basic", "web-sec"}
+    assert exercises["crypto-basic"]["run_id"] == second["run_id"]
+    assert exercises["crypto-basic"]["has_pdf"] is False
+
+
+def test_student_pdf_upload_targets_latest_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
+
+    client = TestClient(app)
+    _start(client, "20240001", "crypto-basic")
+    latest = _start(client, "20240001", "crypto-basic")
+
+    pdf_bytes = b"%PDF-1.4 latest report"
+    up = client.post(
+        "/student/pdf",
+        data={"student_id": "20240001", "exercise_id": "crypto-basic"},
+        files={"file": ("report.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert up.status_code == 200
+    assert up.json()["run_id"] == latest["run_id"]
+
+    # query now reports has_pdf
+    runs = client.get("/api/student/runs?student_id=20240001").json()["runs"]
+    assert runs[0]["has_pdf"] is True
+
+    # student can preview own pdf
+    preview = client.get("/student/pdf?student_id=20240001&exercise_id=crypto-basic")
+    assert preview.status_code == 200
+    assert preview.content == pdf_bytes
+
+
+def test_student_pdf_upload_no_run_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
+
+    client = TestClient(app)
+    resp = client.post(
+        "/student/pdf",
+        data={"student_id": "99999999", "exercise_id": "crypto-basic"},
+        files={"file": ("report.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert resp.status_code == 404
+
+
+def test_student_preview_missing_pdf_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
+
+    client = TestClient(app)
+    _start(client, "20240001", "crypto-basic")
+    resp = client.get("/student/pdf?student_id=20240001&exercise_id=crypto-basic")
+    assert resp.status_code == 404
+
+
+def test_student_endpoints_open_without_login(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+
+    client = TestClient(app)
+    # no login cookie at all
+    assert client.get("/student").status_code == 200
+    assert client.get("/api/student/runs?student_id=20240001").status_code == 200
