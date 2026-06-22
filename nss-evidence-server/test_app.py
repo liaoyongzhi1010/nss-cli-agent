@@ -190,11 +190,10 @@ def test_finalize_returns_signature_and_marks_verified(tmp_path, monkeypatch):
         },
     ).json()
 
-    final_report = "# 实验报告\n\n正文内容"
-    files = [{"path": "solution.py", "sha256": "abc123", "size": 200}]
+    qa = "## User\n帮我理解AES\n\n## Assistant\nAES是对称加密..."
     response = client.post(
         f"/runs/{run['run_id']}/finalize",
-        json={"final_report_markdown": final_report, "files": files},
+        json={"qa_transcript": qa},
     )
 
     assert response.status_code == 200
@@ -207,6 +206,7 @@ def test_finalize_returns_signature_and_marks_verified(tmp_path, monkeypatch):
     detail = client.get(f"/runs/{run['run_id']}").json()
     assert detail["verify_status"] == "verified"
     assert detail["signature"] == body["signature"]
+    assert detail["qa_transcript"] == qa
 
 
 def test_finalize_rejects_already_finalized_run(tmp_path, monkeypatch):
@@ -224,7 +224,7 @@ def test_finalize_rejects_already_finalized_run(tmp_path, monkeypatch):
         },
     ).json()
 
-    payload = {"final_report_markdown": "# report", "files": []}
+    payload = {"qa_transcript": "## User\nhi\n## Assistant\nhello"}
     client.post(f"/runs/{run['run_id']}/finalize", json=payload)
     response = client.post(f"/runs/{run['run_id']}/finalize", json=payload)
 
@@ -248,7 +248,7 @@ def test_verify_confirms_valid_signature(tmp_path, monkeypatch):
     ).json()
     client.post(
         f"/runs/{run['run_id']}/finalize",
-        json={"final_report_markdown": "# report", "files": []},
+        json={"qa_transcript": "## User\nhi\n## Assistant\nhello"},
     )
 
     response = client.get(f"/runs/{run['run_id']}/verify")
@@ -275,7 +275,7 @@ def test_verify_detects_tampered_signature(tmp_path, monkeypatch):
     ).json()
     client.post(
         f"/runs/{run['run_id']}/finalize",
-        json={"final_report_markdown": "# report", "files": []},
+        json={"qa_transcript": "## User\nhi\n## Assistant\nhello"},
     )
 
     import sqlite3
@@ -337,3 +337,108 @@ def test_list_runs_filters_by_status(tmp_path, monkeypatch):
 
     assert len(response_active.json()["runs"]) == 1
     assert len(response_all.json()["runs"]) == 2
+
+
+def test_teacher_routes_require_password_when_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_TEACHER_PASSWORD", "s3cret")
+
+    client = TestClient(app)
+
+    assert client.get("/").status_code == 401
+    assert client.get("/api/runs").status_code == 401
+
+    ok = client.get("/api/runs", auth=("teacher", "s3cret"))
+    assert ok.status_code == 200
+
+    bad = client.get("/api/runs", auth=("teacher", "wrong"))
+    assert bad.status_code == 401
+
+
+def test_student_routes_open_without_password(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_TEACHER_PASSWORD", "s3cret")
+
+    client = TestClient(app)
+
+    assert client.get("/student").status_code == 200
+    start = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    )
+    assert start.status_code == 200
+
+
+def test_pdf_upload_and_teacher_download(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+
+    pdf_bytes = b"%PDF-1.4 fake pdf content"
+    upload = client.post(
+        f"/runs/{run['run_id']}/pdf",
+        files={"file": ("report.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert upload.status_code == 200
+    assert upload.json()["status"] == "uploaded"
+
+    detail = client.get(f"/runs/{run['run_id']}").json()
+    assert detail["pdf_path"]
+
+    download = client.get(f"/runs/{run['run_id']}/pdf")
+    assert download.status_code == 200
+    assert download.content == pdf_bytes
+
+
+def test_pdf_upload_rejects_non_pdf(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
+
+    client = TestClient(app)
+    run = client.post(
+        "/runs/start",
+        json={
+            "student_name": "张三",
+            "student_id": "20240001",
+            "exercise_id": "01-crypto-basic",
+            "computer": {},
+        },
+    ).json()
+
+    bad = client.post(
+        f"/runs/{run['run_id']}/pdf",
+        files={"file": ("report.txt", b"hello", "text/plain")},
+    )
+    assert bad.status_code == 400
+
+
+def test_pdf_upload_unknown_run_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSS_EVIDENCE_DB", str(tmp_path / "evidence.db"))
+    monkeypatch.setenv("NSS_EVIDENCE_SECRET", "test-secret")
+    monkeypatch.setenv("NSS_EVIDENCE_PDF_DIR", str(tmp_path / "pdf"))
+
+    client = TestClient(app)
+    resp = client.post(
+        "/runs/run_does_not_exist/pdf",
+        files={"file": ("report.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert resp.status_code == 404

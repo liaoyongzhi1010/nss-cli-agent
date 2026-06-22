@@ -2,18 +2,48 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
 
 app = FastAPI(title="NSS Evidence Server")
+
+_basic = HTTPBasic(auto_error=False)
+
+
+def get_teacher_password() -> str:
+    return os.environ.get("NSS_TEACHER_PASSWORD", "").strip()
+
+
+def require_teacher(
+    credentials: Optional[HTTPBasicCredentials] = Depends(_basic),
+) -> None:
+    password = get_teacher_password()
+    if not password:
+        return
+    if credentials is None or not secrets.compare_digest(
+        credentials.password, password
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="教师端需要密码",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+def get_pdf_dir() -> Path:
+    path = Path(os.environ.get("NSS_EVIDENCE_PDF_DIR", "data/pdf"))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 class StartRunRequest(BaseModel):
@@ -41,7 +71,8 @@ class SubmitEvidenceRequest(BaseModel):
 
 
 class FinalizeRequest(BaseModel):
-    final_report_markdown: str
+    qa_transcript: str = ""
+    final_report_markdown: str = ""
     files: List[EvidenceFile] = Field(default_factory=list)
 
 
@@ -98,6 +129,8 @@ def connect() -> sqlite3.Connection:
     )
     for column, ddl in (
         ("final_report_md", "final_report_md TEXT"),
+        ("qa_transcript", "qa_transcript TEXT"),
+        ("pdf_path", "pdf_path TEXT"),
         ("verify_status", "verify_status TEXT"),
         ("verified_at", "verified_at TEXT"),
         ("verify_detail", "verify_detail TEXT"),
@@ -112,7 +145,7 @@ def connect() -> sqlite3.Connection:
 
 
 @app.get("/", response_class=HTMLResponse)
-def homepage() -> str:
+def homepage(_: None = Depends(require_teacher)) -> str:
     return """
 <!doctype html>
 <html lang="zh-CN">
@@ -244,7 +277,7 @@ def homepage() -> str:
       el('pending').textContent = allRuns.filter(r => statusKey(r) === 'pending').length
       el('students').textContent = new Set(allRuns.map(r => r.student_id)).size
       if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无符合条件的记录</div>'; return }
-      el('table').innerHTML = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>实验</th><th>状态</th><th>提交编号</th><th>开始时间</th><th>提交时间</th><th>证据哈希 / 签名</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
+      el('table').innerHTML = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>实验</th><th>状态</th><th>提交编号</th><th>开始时间</th><th>提交时间</th><th>证据哈希 / 签名</th><th>查看报告(QA)</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
         <tr>
           <td><b>${r.student_name}</b></td>
           <td><code>${r.student_id}</code></td>
@@ -254,6 +287,7 @@ def homepage() -> str:
           <td>${fmtTime(r.server_started_at)}</td>
           <td>${fmtTime(r.server_submitted_at)}</td>
           <td><code title="${r.evidence_hash || ''}">${shortHash(r.evidence_hash)}</code><br><code title="${r.signature || ''}">${shortHash(r.signature)}</code></td>
+          <td><button class="btn-sm" onclick="showQA('${r.run_id}')">查看 QA</button>${r.pdf_path ? '<br><a class="btn-sm" style="display:inline-block;text-decoration:none;margin-top:4px" href="/runs/'+r.run_id+'/pdf" target="_blank">PDF</a>' : ''}</td>
           <td>${r.signature ? '<button class="btn-sm" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button>' : ''}<button class="btn-sm" onclick="showRun('${r.run_id}')">查看</button></td>
         </tr>`).join('') + '</tbody></table></div><div id="detail" style="margin-top:16px"></div>'
     }
@@ -277,6 +311,17 @@ def homepage() -> str:
       const run = await res.json()
       document.getElementById('detail').innerHTML = '<div class="details">' + JSON.stringify(run, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</div>'
     }
+    async function showQA(id) {
+      const res = await fetch('/runs/' + id)
+      const run = await res.json()
+      const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))
+      const qa = (run.qa_transcript || '').trim()
+      const body = qa
+        ? '<pre style="white-space:pre-wrap;word-break:break-word;margin:0">' + esc(qa) + '</pre>'
+        : '<div class="empty">无对话记录</div>'
+      document.getElementById('detail').innerHTML =
+        '<div class="details"><div style="margin-bottom:8px;font-weight:600">实验过程对话 — ' + esc(run.student_name) + '（' + esc(run.student_id) + '） · ' + esc(run.exercise_id) + '</div>' + body + '</div>'
+    }
     el('query').addEventListener('input', render)
     el('exerciseFilter').addEventListener('change', render)
     el('statusFilter').addEventListener('change', render)
@@ -288,14 +333,16 @@ def homepage() -> str:
 
 
 @app.get("/api/runs")
-def list_runs(status: str = "active") -> Dict[str, Any]:
+def list_runs(
+    status: str = "active", _: None = Depends(require_teacher)
+) -> Dict[str, Any]:
     with connect() as conn:
         if status == "all":
             rows = conn.execute(
                 """
                 SELECT run_id, student_name, student_id, exercise_id,
                        server_started_at, server_submitted_at, evidence_hash,
-                       signature, status, verify_status
+                       signature, status, verify_status, pdf_path
                 FROM runs
                 ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
                 """
@@ -305,7 +352,7 @@ def list_runs(status: str = "active") -> Dict[str, Any]:
                 """
                 SELECT run_id, student_name, student_id, exercise_id,
                        server_started_at, server_submitted_at, evidence_hash,
-                       signature, status, verify_status
+                       signature, status, verify_status, pdf_path
                 FROM runs
                 WHERE status = ?
                 ORDER BY COALESCE(server_submitted_at, server_started_at) DESC
@@ -388,10 +435,7 @@ def submit_evidence(run_id: str, payload: SubmitEvidenceRequest) -> Dict[str, st
 @app.post("/runs/{run_id}/finalize")
 def finalize_run(run_id: str, payload: FinalizeRequest) -> Dict[str, str]:
     server_submitted_at = now_iso()
-    evidence_data = {
-        "final_report_markdown": payload.final_report_markdown,
-        "files": [f.model_dump() for f in payload.files],
-    }
+    evidence_data = {"qa_transcript": payload.qa_transcript}
     evidence_hash = sha256_json(evidence_data)
     signature = sign(run_id, evidence_hash, server_submitted_at)
 
@@ -412,7 +456,7 @@ def finalize_run(run_id: str, payload: FinalizeRequest) -> Dict[str, str]:
             """
             UPDATE runs
             SET evidence_json = ?, evidence_hash = ?, signature = ?,
-                server_submitted_at = ?, final_report_md = ?,
+                server_submitted_at = ?, qa_transcript = ?,
                 verify_status = 'verified', verified_at = ?
             WHERE run_id = ?
             """,
@@ -421,7 +465,7 @@ def finalize_run(run_id: str, payload: FinalizeRequest) -> Dict[str, str]:
                 evidence_hash,
                 signature,
                 server_submitted_at,
-                payload.final_report_markdown,
+                payload.qa_transcript,
                 server_submitted_at,
                 run_id,
             ),
@@ -437,7 +481,7 @@ def finalize_run(run_id: str, payload: FinalizeRequest) -> Dict[str, str]:
 
 
 @app.get("/runs/{run_id}/verify")
-def verify_run(run_id: str) -> Dict[str, Any]:
+def verify_run(run_id: str, _: None = Depends(require_teacher)) -> Dict[str, Any]:
     with connect() as conn:
         row = conn.execute(
             "SELECT run_id, evidence_hash, signature, server_submitted_at, verify_status FROM runs WHERE run_id = ?",
@@ -461,7 +505,7 @@ def verify_run(run_id: str) -> Dict[str, Any]:
 
 
 @app.delete("/runs/{run_id}")
-def delete_run(run_id: str) -> Dict[str, str]:
+def delete_run(run_id: str, _: None = Depends(require_teacher)) -> Dict[str, str]:
     with connect() as conn:
         row = conn.execute(
             "SELECT run_id FROM runs WHERE run_id = ?", (run_id,)
@@ -474,7 +518,7 @@ def delete_run(run_id: str) -> Dict[str, str]:
 
 
 @app.get("/runs/{run_id}")
-def get_run(run_id: str) -> Dict[str, Any]:
+def get_run(run_id: str, _: None = Depends(require_teacher)) -> Dict[str, Any]:
     with connect() as conn:
         row = conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         if row is None:
@@ -500,4 +544,121 @@ def get_run(run_id: str) -> Dict[str, Any]:
         "verified_at": row["verified_at"],
         "verify_detail": row["verify_detail"],
         "final_report_md": row["final_report_md"],
+        "qa_transcript": row["qa_transcript"],
+        "pdf_path": row["pdf_path"],
     }
+
+
+@app.get("/student", response_class=HTMLResponse)
+def student_page() -> str:
+    return """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NSS 学生端 · 报告上传</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:#e5e7eb;
+      background: radial-gradient(circle at 20% 10%, rgba(34,211,238,.22), transparent 30%),
+        radial-gradient(circle at 80% 0%, rgba(139,92,246,.26), transparent 32%),
+        linear-gradient(135deg,#020617,#0f172a 55%,#111827); }
+    .card { width:min(560px, 92vw); background:rgba(15,23,42,.82); border:1px solid rgba(148,163,184,.22);
+      border-radius:20px; padding:32px; backdrop-filter: blur(18px); box-shadow:0 18px 60px rgba(0,0,0,.3); }
+    .eyebrow { color:#22d3ee; letter-spacing:.22em; text-transform:uppercase; font-size:12px; font-weight:700; }
+    h1 { margin:.35rem 0 4px; font-size:26px; }
+    p.sub { color:#94a3b8; margin:0 0 22px; font-size:14px; line-height:1.6; }
+    label { display:block; font-size:13px; color:#cbd5e1; margin:14px 0 6px; }
+    input { width:100%; padding:11px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.3);
+      background:rgba(2,6,23,.6); color:#e5e7eb; font-size:14px; }
+    button { margin-top:22px; width:100%; padding:12px; border:none; border-radius:12px; cursor:pointer;
+      background:linear-gradient(135deg,#22d3ee,#8b5cf6); color:#05060f; font-weight:700; font-size:15px; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    #msg { margin-top:16px; font-size:14px; min-height:20px; }
+    .ok { color:#34d399; } .err { color:#fb7185; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="eyebrow">NSS · Student</div>
+    <h1>实验报告 PDF 上传</h1>
+    <p class="sub">PDF 仅供教师阅读，不参与签名验证。请填写你 report 时生成的提交编号（run_id），并选择报告 PDF 文件。</p>
+    <label>提交编号 run_id</label>
+    <input id="runId" placeholder="run_xxxxxxxx" />
+    <label>报告 PDF</label>
+    <input id="file" type="file" accept="application/pdf" />
+    <button id="btn">上传</button>
+    <div id="msg"></div>
+  </div>
+  <script>
+    const $ = id => document.getElementById(id)
+    $('btn').onclick = async () => {
+      const runId = $('runId').value.trim()
+      const file = $('file').files[0]
+      const msg = $('msg')
+      msg.textContent = ''; msg.className = ''
+      if (!runId) { msg.textContent = '请填写提交编号 run_id'; msg.className = 'err'; return }
+      if (!file) { msg.textContent = '请选择 PDF 文件'; msg.className = 'err'; return }
+      const fd = new FormData()
+      fd.append('file', file)
+      $('btn').disabled = true; $('btn').textContent = '上传中...'
+      try {
+        const res = await fetch('/runs/' + encodeURIComponent(runId) + '/pdf', { method: 'POST', body: fd })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.detail || ('上传失败 (' + res.status + ')'))
+        msg.textContent = '✅ 上传成功，教师可在面板查看你的报告 PDF。'; msg.className = 'ok'
+      } catch (e) {
+        msg.textContent = '❌ ' + e.message; msg.className = 'err'
+      } finally {
+        $('btn').disabled = false; $('btn').textContent = '上传'
+      }
+    }
+  </script>
+</body>
+</html>
+    """
+
+
+@app.post("/runs/{run_id}/pdf")
+async def upload_pdf(run_id: str, file: UploadFile = File(...)) -> Dict[str, str]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT run_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="提交编号不存在，请确认 run_id")
+
+    filename = file.filename or ""
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
+
+    dest = get_pdf_dir() / f"{run_id}.pdf"
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件为空")
+    dest.write_bytes(content)
+
+    with connect() as conn:
+        conn.execute(
+            "UPDATE runs SET pdf_path = ? WHERE run_id = ?", (str(dest), run_id)
+        )
+        conn.commit()
+
+    return {"run_id": run_id, "status": "uploaded"}
+
+
+@app.get("/runs/{run_id}/pdf")
+def download_pdf(run_id: str, _: None = Depends(require_teacher)) -> FileResponse:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT pdf_path FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+    if row is None or not row["pdf_path"]:
+        raise HTTPException(status_code=404, detail="该提交没有 PDF")
+    path = Path(row["pdf_path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="PDF 文件已丢失")
+    return FileResponse(path, media_type="application/pdf", filename=f"{run_id}.pdf")

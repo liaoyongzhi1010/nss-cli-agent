@@ -1,7 +1,7 @@
 # nss-cli 重构设计 v2：流程简化 + QA 过程证据 + 双端后端
 
 日期：2026-06-22
-状态：待用户评审（设计阶段，暂不改码）
+状态：已实现（阶段 A/B/C 全部完成）
 背景：基于用户对"提交方式 + 记录信息"的最新决策
 
 ## 一、产品决策（用户最新确认）
@@ -109,10 +109,34 @@ signature      = HMAC-SHA256(服务端密钥, "run_id : evidence_hash : report�
 7. 教师端加密码鉴权
 8. 学生端 PDF 上传页（仅阅读）
 
-## 八、待确认问题
-- 教师端密码用什么方式（HTTP Basic / 登录页 / 固定口令环境变量）？
-- 学生端 PDF 上传后，在教师端哪里展示/下载？
-- init 没有 session、也没和 AI 对话，report 时如果学生根本没和 AI 互动（QA 为空）怎么处理？（建议：QA 为空时提示学生"请先和 AI 做实验"）
+## 七点五、实现落地记录（2026-06-22）
+
+全部阶段已实现并通过验证：
+
+- **阶段 A/B（前端 nsscli + 后端）**
+  - TUI 去掉 submit，`/lesson` 只剩 init + report（`dialog-lesson-actions.tsx`）
+  - report 时 `extractQATranscript()`（`app.tsx`）从 session 提取学生/AI 对话
+  - `finalizeEvidence(meta, qaTranscript)` 上传 QA（`lab-evidence.ts`）
+  - 后端 `evidence_hash = SHA256({qa_transcript})`，只锁 QA；存 `qa_transcript` 列
+  - 教师面板新增"查看报告(QA)"列，空 QA 显示"无对话记录"
+- **阶段 C（双端拆分）**
+  - 教师端鉴权：`require_teacher` 依赖 + 环境变量 `NSS_TEACHER_PASSWORD`（未设则开放）；保护 `/`、`/api/runs`、`/runs/{id}`、`/runs/{id}/verify`、`/runs/{id}/pdf`(下载)、`DELETE /runs/{id}`
+  - 学生端 `/student` PDF 上传页（无需密码）+ `POST /runs/{id}/pdf` 上传端点（按 run_id 存 `data/pdf/{run_id}.pdf`，写 `pdf_path` 列）
+  - 教师面板 QA 列在有 PDF 时显示下载链接（受密码保护）
+  - 新增依赖 `python-multipart`（requirements.txt）
+- **验证**：后端 18 个 pytest 全过；nsscli `tsc --noEmit` 干净、build + 冒烟通过；C 阶段路由经 curl 真实联调（鉴权 401/200、上传、下载字节完整）。
+- **环境变量汇总**：
+  - `NSS_EVIDENCE_SECRET` 签名密钥
+  - `NSS_EVIDENCE_DB` 数据库路径
+  - `NSS_EVIDENCE_PDF_DIR` PDF 存储目录（默认 `data/pdf`）
+  - `NSS_TEACHER_PASSWORD` 教师端密码（HTTP Basic，未设则教师端开放）
+  - `NSS_EVIDENCE_SERVER`（nsscli 端）后端地址，默认 `http://127.0.0.1:8000`
+  - `NSS_STUDENT_NAME` / `NSS_STUDENT_ID` 学生身份
+
+## 八、待确认问题（已定稿）
+- 教师端密码：用环境变量 `NSS_TEACHER_PASSWORD` + HTTP Basic Auth。未设密码时教师端开放（方便本地开发）；设了则必须验证。
+- 学生端 PDF：教师端表格在**操作列前面**加一列"查看报告(QA)"，点开看该 run 的 qa_transcript。PDF 上传后同样在该列可下载（若有）。
+- QA 为空：正常处理，不阻断 report。QA 为空时该列显示"无对话记录"。
 
 ## 九、一句话总结
 流程简化成 init+report；report 时把"代码哈希+实验过程QA"一起签名上传；教师端（需密码）能看每个学生的真实做题对话过程，PDF 仅供阅读不参与验证。核心是用"过程QA"证明学生真在平台逐步做实验。
