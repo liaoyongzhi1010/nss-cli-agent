@@ -61,6 +61,23 @@ def get_pdf_dir() -> Path:
     return path
 
 
+FAVICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+    '<stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/>'
+    "</linearGradient></defs>"
+    '<rect width="32" height="32" rx="7" fill="url(#g)"/>'
+    '<path d="M16 5l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V8z" fill="none" stroke="#05060f" stroke-width="2" stroke-linejoin="round"/>'
+    '<path d="M12 16l3 3 5-6" fill="none" stroke="#05060f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+    "</svg>"
+)
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
+
+
 class StartRunRequest(BaseModel):
     student_name: str = Field(min_length=1)
     student_id: str = Field(min_length=1)
@@ -172,6 +189,7 @@ def login_page(request: Request, error: str = ""):
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>NSS 教师端 · 登录</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -251,6 +269,7 @@ def homepage(request: Request):
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>NSS Evidence Console</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <style>
     :root { color-scheme: dark; --bg:#050816; --panel:rgba(15,23,42,.78); --line:rgba(148,163,184,.22); --text:#e5e7eb; --muted:#94a3b8; --cyan:#22d3ee; --violet:#8b5cf6; --green:#34d399; --red:#fb7185; }
     * { box-sizing: border-box; }
@@ -278,6 +297,15 @@ def homepage(request: Request):
     .ok { color:var(--green); font-weight:700; }
     .empty { color:var(--muted); padding:28px; text-align:center; }
     .details { white-space:pre-wrap; background:rgba(2,6,23,.75); border:1px solid var(--line); border-radius:14px; padding:14px; max-height:360px; overflow:auto; }
+    .modal-mask { position:fixed; inset:0; background:rgba(2,6,23,.72); backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; z-index:50; padding:24px; }
+    .modal-mask.show { display:flex; }
+    .modal { width:min(760px, 94vw); max-height:84vh; display:flex; flex-direction:column; background:linear-gradient(180deg, rgba(17,25,42,.98), rgba(12,18,32,.98)); border:1px solid rgba(148,163,184,.25); border-radius:18px; box-shadow:0 30px 90px rgba(0,0,0,.6); }
+    .modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .modal-head h3 { margin:0; font-size:16px; }
+    .modal-close { cursor:pointer; border:1px solid rgba(148,163,184,.3); background:transparent; color:var(--muted); border-radius:8px; padding:5px 12px; font-size:13px; }
+    .modal-close:hover { color:#fff; border-color:var(--cyan); }
+    .modal-body { padding:18px 22px; overflow:auto; }
+    .modal-body pre { white-space:pre-wrap; word-break:break-word; margin:0; font-size:13px; line-height:1.6; }
     .badge { display:inline-block; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:700; }
     .badge-verified { background:rgba(52,211,153,.15); color:var(--green); border:1px solid rgba(52,211,153,.3); }
     .badge-pending { background:rgba(148,163,184,.12); color:var(--muted); border:1px solid rgba(148,163,184,.25); }
@@ -379,7 +407,7 @@ def homepage(request: Request):
       el('pending').textContent = allRuns.filter(r => statusKey(r) === 'pending').length
       el('students').textContent = new Set(allRuns.map(r => r.student_id)).size
       if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无符合条件的记录</div>'; return }
-      el('table').innerHTML = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>实验</th><th>状态</th><th>提交编号</th><th>开始时间</th><th>提交时间</th><th>证据哈希 / 签名</th><th>查看报告(QA)</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
+      el('table').innerHTML = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>实验</th><th>状态</th><th>提交编号</th><th>开始时间</th><th>提交时间</th><th>证据哈希 / 签名</th><th>报告(PDF)</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
         <tr>
           <td><b>${r.student_name}</b></td>
           <td><code>${r.student_id}</code></td>
@@ -389,9 +417,9 @@ def homepage(request: Request):
           <td>${fmtTime(r.server_started_at)}</td>
           <td>${fmtTime(r.server_submitted_at)}</td>
           <td><code title="${r.evidence_hash || ''}">${shortHash(r.evidence_hash)}</code><br><code title="${r.signature || ''}">${shortHash(r.signature)}</code></td>
-          <td><button class="btn-sm" onclick="showQA('${r.run_id}')">查看 QA</button>${r.pdf_path ? '<br><a class="btn-sm" style="display:inline-block;text-decoration:none;margin-top:4px" href="/runs/'+r.run_id+'/pdf" target="_blank">PDF</a>' : ''}</td>
-          <td>${r.signature ? '<button class="btn-sm" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button>' : ''}<button class="btn-sm" onclick="showRun('${r.run_id}')">查看</button></td>
-        </tr>`).join('') + '</tbody></table></div><div id="detail" style="margin-top:16px"></div>'
+          <td>${r.pdf_path ? '<a class="btn-sm" style="display:inline-block;text-decoration:none" href="/runs/'+r.run_id+'/pdf" target="_blank">查看 PDF</a>' : '<span style="color:var(--muted);font-size:12px">未上传</span>'}</td>
+          <td>${r.signature ? '<button class="btn-sm" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button>' : ''}<button class="btn-sm" onclick="showQA('${r.run_id}')">查看 QA</button></td>
+        </tr>`).join('') + '</tbody></table></div>'
     }
     async function verifyRun(id, btn) {
       btn.disabled = true
@@ -408,27 +436,37 @@ def homepage(request: Request):
         btn.style.color = 'var(--red)'
       }
     }
-    async function showRun(id) {
-      const res = await fetch('/runs/' + id)
-      const run = await res.json()
-      document.getElementById('detail').innerHTML = '<div class="details">' + JSON.stringify(run, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</div>'
-    }
     async function showQA(id) {
       const res = await fetch('/runs/' + id)
+      if (res.status === 401) { window.location.href = '/login'; return }
       const run = await res.json()
       const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))
       const qa = (run.qa_transcript || '').trim()
       const body = qa
-        ? '<pre style="white-space:pre-wrap;word-break:break-word;margin:0">' + esc(qa) + '</pre>'
+        ? '<pre>' + esc(qa) + '</pre>'
         : '<div class="empty">无对话记录</div>'
-      document.getElementById('detail').innerHTML =
-        '<div class="details"><div style="margin-bottom:8px;font-weight:600">实验过程对话 — ' + esc(run.student_name) + '（' + esc(run.student_id) + '） · ' + esc(run.exercise_id) + '</div>' + body + '</div>'
+      document.getElementById('modalTitle').textContent =
+        '实验过程对话 — ' + run.student_name + '（' + run.student_id + '） · ' + run.exercise_id
+      document.getElementById('modalBody').innerHTML = body
+      document.getElementById('modalMask').classList.add('show')
     }
+    function closeModal() { document.getElementById('modalMask').classList.remove('show') }
     el('query').addEventListener('input', render)
     el('exerciseFilter').addEventListener('change', render)
     el('statusFilter').addEventListener('change', render)
+    document.getElementById('modalMask').addEventListener('click', e => { if (e.target.id === 'modalMask') closeModal() })
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal() })
     loadRuns()
   </script>
+  <div class="modal-mask" id="modalMask">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle">实验过程对话</h3>
+        <button class="modal-close" onclick="closeModal()">关闭 ✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
 </body>
 </html>
     """)
@@ -660,86 +698,151 @@ def student_page() -> str:
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>NSS 学生端 · 报告上传</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: dark; --cyan:#22d3ee; --violet:#8b5cf6; --green:#34d399; --red:#fb7185; --muted:#8b97a8; }
     * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:#e5e7eb;
-      background: radial-gradient(circle at 20% 10%, rgba(34,211,238,.22), transparent 30%),
-        radial-gradient(circle at 80% 0%, rgba(139,92,246,.26), transparent 32%),
-        linear-gradient(135deg,#020617,#0f172a 55%,#111827); }
-    .card { width:min(600px, 92vw); background:rgba(15,23,42,.82); border:1px solid rgba(148,163,184,.22);
-      border-radius:20px; padding:32px; backdrop-filter: blur(18px); box-shadow:0 18px 60px rgba(0,0,0,.3); }
-    .eyebrow { color:#22d3ee; letter-spacing:.22em; text-transform:uppercase; font-size:12px; font-weight:700; }
-    h1 { margin:.35rem 0 4px; font-size:26px; }
-    p.sub { color:#94a3b8; margin:0 0 22px; font-size:14px; line-height:1.6; }
-    label { display:block; font-size:13px; color:#cbd5e1; margin:14px 0 6px; }
-    input { width:100%; padding:11px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.3);
-      background:rgba(2,6,23,.6); color:#e5e7eb; font-size:14px; }
-    input:focus { outline:none; border-color:rgba(34,211,238,.6); box-shadow:0 0 0 3px rgba(34,211,238,.12); }
-    button { margin-top:8px; padding:11px 16px; border:none; border-radius:12px; cursor:pointer;
-      background:linear-gradient(135deg,#22d3ee,#8b5cf6); color:#05060f; font-weight:700; font-size:14px; }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    button.ghost { background:transparent; border:1px solid rgba(148,163,184,.35); color:#cbd5e1; }
-    #msg { margin-top:14px; font-size:14px; min-height:20px; }
-    .ok { color:#34d399; } .err { color:#fb7185; }
-    .runs { margin-top:22px; display:flex; flex-direction:column; gap:10px; }
-    .run { border:1px solid rgba(148,163,184,.22); border-radius:14px; padding:14px; background:rgba(2,6,23,.4); }
-    .run h3 { margin:0 0 4px; font-size:15px; }
-    .run .meta { color:#94a3b8; font-size:12px; margin-bottom:10px; }
-    .run .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .pill { font-size:12px; padding:3px 10px; border-radius:999px; }
-    .pill.has { background:rgba(52,211,153,.15); color:#34d399; }
-    .pill.no { background:rgba(251,113,133,.15); color:#fb7185; }
-    a.link { color:#22d3ee; font-size:13px; text-decoration:none; }
-    .empty { color:#94a3b8; font-size:14px; margin-top:18px; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:48px 16px;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif; color:#e5e7eb;
+      background: radial-gradient(circle at 18% 8%, rgba(34,211,238,.20), transparent 30%),
+        radial-gradient(circle at 84% 0%, rgba(139,92,246,.24), transparent 34%),
+        linear-gradient(135deg,#020617,#0b1220 55%,#0f172a); }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none;
+      background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 46px 46px; mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), rgba(0,0,0,.05)); }
+    .card { position:relative; width:min(580px, 94vw); background:linear-gradient(180deg, rgba(17,25,42,.9), rgba(12,18,32,.86));
+      border:1px solid rgba(148,163,184,.18); border-radius:24px; padding:34px 36px 38px;
+      backdrop-filter: blur(20px); box-shadow:0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04); }
+    .brand { display:flex; align-items:center; gap:14px; margin-bottom:22px; }
+    .logo { width:46px; height:46px; border-radius:14px; display:grid; place-items:center; flex:none;
+      background:linear-gradient(135deg, rgba(34,211,238,.9), rgba(139,92,246,.9)); box-shadow:0 8px 24px rgba(34,211,238,.28); }
+    .logo svg { width:24px; height:24px; }
+    .brand .eyebrow { color:var(--cyan); letter-spacing:.26em; text-transform:uppercase; font-size:11px; font-weight:800; }
+    .brand h1 { margin:2px 0 0; font-size:23px; letter-spacing:.5px; }
+    p.sub { color:var(--muted); margin:0 0 26px; font-size:13.5px; line-height:1.7; }
+    p.sub b { color:#cbd5e1; }
+    .search { display:flex; gap:10px; align-items:center; padding:8px; border-radius:16px;
+      border:1px solid rgba(148,163,184,.22); background:rgba(2,6,23,.5); }
+    .search label { font-size:13px; color:var(--muted); white-space:nowrap; padding-left:10px; }
+    .search input { flex:1; min-width:0; padding:11px 8px; border:none; outline:none; background:transparent; color:#e5e7eb; font-size:14.5px; }
+    .search input::placeholder { color:#5b6b80; }
+    .search button { padding:11px 22px; border:none; border-radius:11px; cursor:pointer; white-space:nowrap;
+      background:linear-gradient(135deg,var(--cyan),var(--violet)); color:#05060f; font-weight:800; font-size:14px;
+      box-shadow:0 8px 22px rgba(34,211,238,.22); transition:transform .12s, box-shadow .12s; }
+    .search button:hover { transform:translateY(-1px); box-shadow:0 12px 28px rgba(34,211,238,.32); }
+    button:disabled { opacity:.5; cursor:not-allowed; transform:none !important; }
+    #msg { font-size:13.5px; }
+    #msg:not(:empty) { margin-top:16px; padding:11px 14px; border-radius:12px; }
+    #msg.ok { color:var(--green); background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.25); }
+    #msg.err { color:var(--red); background:rgba(251,113,133,.1); border:1px solid rgba(251,113,133,.25); }
+    .count { margin-top:24px; font-size:12px; color:var(--muted); letter-spacing:.04em; }
+    .runs { display:flex; flex-direction:column; gap:14px; }
+    .runs:not(:empty) { margin-top:10px; }
+    .run { position:relative; border:1px solid rgba(148,163,184,.18); border-radius:18px; padding:18px 20px;
+      background:linear-gradient(180deg, rgba(2,6,23,.55), rgba(2,6,23,.35)); transition:border-color .15s, transform .15s; }
+    .run:hover { border-color:rgba(34,211,238,.35); transform:translateY(-1px); }
+    .run-head { display:flex; align-items:center; gap:12px; }
+    .ex-ic { width:38px; height:38px; border-radius:11px; flex:none; display:grid; place-items:center;
+      background:rgba(34,211,238,.1); border:1px solid rgba(34,211,238,.25); }
+    .ex-ic svg { width:19px; height:19px; }
+    .run h3 { margin:0; font-size:15.5px; }
+    .run .meta { color:var(--muted); font-size:11.5px; margin-top:3px; }
+    .pill { font-size:11.5px; font-weight:700; padding:4px 12px; border-radius:999px; margin-left:auto; flex:none; }
+    .pill.has { background:rgba(52,211,153,.14); color:var(--green); border:1px solid rgba(52,211,153,.3); }
+    .pill.no { background:rgba(251,113,133,.12); color:var(--red); border:1px solid rgba(251,113,133,.28); }
+    .run-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px;
+      padding-top:14px; border-top:1px solid rgba(148,163,184,.12); }
+    a.link { color:var(--cyan); font-size:13px; text-decoration:none; display:inline-flex; align-items:center; gap:5px;
+      padding:7px 12px; border-radius:10px; border:1px solid rgba(34,211,238,.3); background:rgba(34,211,238,.06); transition:background .15s; }
+    a.link:hover { background:rgba(34,211,238,.14); }
+    .filewrap { display:inline-flex; align-items:center; gap:10px; flex:1; min-width:180px; }
+    .filebtn { padding:7px 14px; border-radius:10px; border:1px dashed rgba(148,163,184,.4); background:transparent;
+      color:#cbd5e1; font-size:13px; cursor:pointer; white-space:nowrap; transition:border-color .15s, color .15s; }
+    .filebtn:hover { border-color:var(--cyan); color:#fff; }
+    .fname { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .run input[type=file] { display:none; }
+    button.up { padding:8px 16px; border:none; border-radius:10px; cursor:pointer; white-space:nowrap; margin-left:auto;
+      background:linear-gradient(135deg,var(--cyan),var(--violet)); color:#05060f; font-weight:700; font-size:13px; }
+    .empty { color:var(--muted); font-size:13.5px; text-align:center; padding:30px 16px; margin-top:24px;
+      border:1px dashed rgba(148,163,184,.22); border-radius:16px; background:rgba(2,6,23,.3); line-height:1.7; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="eyebrow">NSS · Student</div>
-    <h1>实验报告 PDF</h1>
-    <p class="sub">PDF 仅供教师阅读，不参与签名验证。输入你的学号查询你做过的实验，每个实验以你<b>最新一次</b>提交为准，可预览/替换 PDF。</p>
-    <label>学号</label>
-    <input id="sid" placeholder="如 20240001" />
-    <button id="queryBtn">查询我的实验</button>
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#05060f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/></svg>
+      </div>
+      <div>
+        <div class="eyebrow">NSS · Student</div>
+        <h1>实验报告 PDF</h1>
+      </div>
+    </div>
+    <p class="sub">PDF 仅供教师阅读，不参与签名验证。输入你的学号查询做过的实验，每个实验以你<b>最新一次</b>提交为准，可预览 / 替换 PDF。</p>
+    <div class="search">
+      <label for="sid">学号</label>
+      <input id="sid" placeholder="如 20240001" />
+      <button id="queryBtn">查询</button>
+    </div>
     <div id="msg"></div>
+    <div class="count" id="count"></div>
     <div class="runs" id="runs"></div>
   </div>
   <script>
     const $ = id => document.getElementById(id)
     const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))
     function fmt(t){ if(!t) return '-'; try{ return new Date(t).toLocaleString('zh-CN') }catch(e){ return t } }
+    const fileIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>'
     let currentSid = ''
 
     $('queryBtn').onclick = query
     $('sid').addEventListener('keydown', e => { if (e.key === 'Enter') query() })
 
+    function setMsg(text, cls){ const m = $('msg'); m.textContent = text || ''; m.className = text ? cls : '' }
+
     async function query() {
       const sid = $('sid').value.trim()
-      const msg = $('msg'); msg.textContent = ''; msg.className = ''
-      $('runs').innerHTML = ''
-      if (!sid) { msg.textContent = '请输入学号'; msg.className = 'err'; return }
+      setMsg('', ''); $('runs').innerHTML = ''; $('count').textContent = ''
+      if (!sid) { setMsg('请输入学号', 'err'); return }
       currentSid = sid
       const res = await fetch('/api/student/runs?student_id=' + encodeURIComponent(sid))
       const data = await res.json().catch(() => ({runs:[]}))
       const runs = data.runs || []
-      if (!runs.length) { $('runs').innerHTML = '<div class="empty">没有查询到该学号的实验提交。请先用 nsscli 做实验并 report。</div>'; return }
+      if (!runs.length) { $('runs').innerHTML = '<div class="empty">没有查询到该学号的实验提交。<br>请先用 nsscli 做实验并 <b>report</b>。</div>'; return }
+      $('count').textContent = '共 ' + runs.length + ' 个实验 · 学号 ' + sid
       $('runs').innerHTML = runs.map(r => `
         <div class="run">
-          <h3>${esc(r.exercise_id)}</h3>
-          <div class="meta">最新提交：${fmt(r.server_submitted_at)} · 提交编号 ${esc(r.run_id)}</div>
-          <div class="row">
-            ${r.has_pdf
-              ? '<span class="pill has">已上传 PDF</span> <a class="link" href="/student/pdf?student_id='+encodeURIComponent(currentSid)+'&exercise_id='+encodeURIComponent(r.exercise_id)+'" target="_blank">预览当前 PDF</a>'
-              : '<span class="pill no">未上传 PDF</span>'}
+          <div class="run-head">
+            <div class="ex-ic">${fileIcon}</div>
+            <div>
+              <h3>${esc(r.exercise_id)}</h3>
+              <div class="meta">最新提交 ${fmt(r.server_submitted_at)} · ${esc(r.run_id)}</div>
+            </div>
+            <span class="pill ${r.has_pdf ? 'has' : 'no'}">${r.has_pdf ? '已上传 PDF' : '未上传'}</span>
           </div>
-          <div class="row" style="margin-top:12px">
-            <input type="file" accept="application/pdf" data-ex="${esc(r.exercise_id)}" />
-            <button class="ghost" data-ex="${esc(r.exercise_id)}">${r.has_pdf ? '替换 PDF' : '上传 PDF'}</button>
+          <div class="run-actions">
+            ${r.has_pdf
+              ? '<a class="link" href="/student/pdf?student_id='+encodeURIComponent(currentSid)+'&exercise_id='+encodeURIComponent(r.exercise_id)+'" target="_blank">预览当前 PDF</a>'
+              : ''}
+            <div class="filewrap">
+              <input type="file" accept="application/pdf" id="f-${esc(r.exercise_id)}" />
+              <button class="filebtn" type="button" data-for="f-${esc(r.exercise_id)}">选择 PDF</button>
+              <span class="fname" data-fname="${esc(r.exercise_id)}">未选择文件</span>
+            </div>
+            <button class="up" data-ex="${esc(r.exercise_id)}">${r.has_pdf ? '替换' : '上传'}</button>
           </div>
         </div>`).join('')
-      $('runs').querySelectorAll('button.ghost').forEach(btn => {
+      $('runs').querySelectorAll('.filebtn').forEach(btn => {
+        btn.onclick = () => document.getElementById(btn.dataset.for).click()
+      })
+      $('runs').querySelectorAll('input[type=file]').forEach(inp => {
+        inp.onchange = () => {
+          const ex = inp.id.slice(2)
+          const span = $('runs').querySelector('[data-fname="' + ex + '"]')
+          span.textContent = inp.files[0] ? inp.files[0].name : '未选择文件'
+        }
+      })
+      $('runs').querySelectorAll('button.up').forEach(btn => {
         btn.onclick = () => upload(btn.dataset.ex, btn)
       })
     }
@@ -748,8 +851,8 @@ def student_page() -> str:
       const card = btn.closest('.run')
       const fileInput = card.querySelector('input[type=file]')
       const file = fileInput.files[0]
-      const msg = $('msg'); msg.textContent = ''; msg.className = ''
-      if (!file) { msg.textContent = '请先选择该实验的 PDF 文件'; msg.className = 'err'; return }
+      setMsg('', '')
+      if (!file) { setMsg('请先选择该实验的 PDF 文件', 'err'); return }
       const fd = new FormData()
       fd.append('student_id', currentSid)
       fd.append('exercise_id', exerciseId)
@@ -759,10 +862,10 @@ def student_page() -> str:
         const res = await fetch('/student/pdf', { method: 'POST', body: fd })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.detail || ('上传失败 (' + res.status + ')'))
-        msg.textContent = '✅ ' + exerciseId + ' 的报告 PDF 上传成功。'; msg.className = 'ok'
+        setMsg('✅ ' + exerciseId + ' 的报告 PDF 上传成功。', 'ok')
         await query()
       } catch (e) {
-        msg.textContent = '❌ ' + e.message; msg.className = 'err'
+        setMsg('❌ ' + e.message, 'err')
         btn.disabled = false; btn.textContent = old
       }
     }
