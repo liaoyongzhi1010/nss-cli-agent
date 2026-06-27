@@ -279,20 +279,30 @@ export async function writeReportSkeleton(input: {
   return content
 }
 
-export async function writeReportWithFiles(input: {
-  dir: string
+export const REPORT_DIR_NAME = "report"
+
+function escapeTex(value: string): string {
+  return value
+    .replace(/\\/g, "\\textbackslash{}")
+    .replace(/([&%$#_{}])/g, "\\$1")
+    .replace(/~/g, "\\textasciitilde{}")
+    .replace(/\^/g, "\\textasciicircum{}")
+}
+
+function reportMarkdown(input: {
   title: string
   meta: EvidenceMeta
   files: EvidenceFileInfo[]
-}) {
+}): string {
   const fileLines =
     input.files.length > 0
       ? input.files.map((f) => `- ${f.path}（${f.size} 字节）SHA256: ${f.sha256}`).join("\n")
       : "- 暂未检测到代码文件，请确认实验代码已保存在本实验目录下。"
-  const content = `# 实验报告：${input.title}
+  return `# 实验报告：${input.title}
 
-> 📌 报告已根据你当前实验目录的代码自动生成。请补全各小节内容。
-> 确认无误后，回到 /lesson 选择 **submit** 提交定版并签名。
+> 📌 报告已根据你当前实验目录的代码自动生成，并已在 report 时签名定版。
+> 请补全下方各小节内容，作为提交给教师阅读的实验报告。
+> 同目录的 report.tex 可上传 Overleaf（编译器选 XeLaTeX）渲染为 PDF。
 
 ## 基本信息
 
@@ -325,8 +335,149 @@ ${fileLines}
 
 请补充实验结论和个人反思。
 `
-  await writeFile(join(input.dir, "report.md"), content, "utf-8")
-  return content
+}
+
+function reportTex(input: {
+  title: string
+  meta: EvidenceMeta
+  files: EvidenceFileInfo[]
+}): string {
+  const fileItems =
+    input.files.length > 0
+      ? input.files
+          .map((f) => `  \\item \\texttt{${escapeTex(f.path)}} \\hfill {\\small ${f.size} 字节}\\\\ {\\footnotesize SHA256: \\texttt{${escapeTex(f.sha256)}}}`)
+          .join("\n")
+      : "  \\item 暂未检测到代码文件，请确认实验代码已保存在本实验目录下。"
+  const name = escapeTex(input.meta.student.name)
+  const sid = escapeTex(input.meta.student.id)
+  const title = escapeTex(input.title)
+  const started = escapeTex(input.meta.serverStartedAt)
+  const runId = escapeTex(input.meta.runId)
+  return `% !TEX program = xelatex
+% =====================================================================
+%  NSS 实验报告模板（适配《计算机安全导论》课程实验）
+%  中文渲染：在 Overleaf 右上角 Menu 中将 Compiler 设为 XeLaTeX
+% =====================================================================
+\\documentclass[11pt,a4paper]{ctexart}
+
+\\usepackage[margin=2.4cm]{geometry}
+\\usepackage{xcolor}
+\\usepackage{titlesec}
+\\usepackage{fancyhdr}
+\\usepackage{enumitem}
+\\usepackage{listings}
+\\usepackage{booktabs}
+\\usepackage{hyperref}
+
+% ---- 配色 ----
+\\definecolor{nssblue}{HTML}{1F4E79}
+\\definecolor{nssaccent}{HTML}{2D8CCE}
+\\definecolor{nssgray}{HTML}{6B7280}
+\\definecolor{codebg}{HTML}{F4F6F8}
+
+\\hypersetup{colorlinks=true, linkcolor=nssblue, urlcolor=nssaccent}
+
+% ---- 章节样式 ----
+\\titleformat{\\section}
+  {\\Large\\bfseries\\color{nssblue}}{\\thesection}{0.6em}{}
+  [\\vspace{2pt}{\\color{nssaccent}\\titlerule[1pt]}]
+\\titleformat{\\subsection}
+  {\\large\\bfseries\\color{nssaccent}}{\\thesubsection}{0.5em}{}
+
+% ---- 页眉页脚 ----
+\\pagestyle{fancy}
+\\fancyhf{}
+\\lhead{\\small\\color{nssgray}计算机安全导论 · 实验报告}
+\\rhead{\\small\\color{nssgray}${name}（${sid}）}
+\\cfoot{\\small\\color{nssgray}\\thepage}
+\\renewcommand{\\headrulewidth}{0.4pt}
+\\renewcommand{\\footrulewidth}{0pt}
+
+% ---- 代码样式 ----
+\\lstset{
+  basicstyle=\\ttfamily\\small,
+  breaklines=true,
+  frame=single,
+  framerule=0pt,
+  backgroundcolor=\\color{codebg},
+  xleftmargin=8pt, xrightmargin=8pt,
+  aboveskip=8pt, belowskip=8pt,
+}
+
+\\begin{document}
+
+% ================= 标题块 =================
+\\begin{center}
+  {\\color{nssaccent}\\rule{\\linewidth}{2pt}}\\\\[10pt]
+  {\\Huge\\bfseries\\color{nssblue} 实验报告}\\\\[6pt]
+  {\\LARGE ${title}}\\\\[12pt]
+  {\\large ${name} \\quad 学号：${sid}}\\\\[4pt]
+  {\\color{nssgray} 实验开始时间：${started}}\\\\[2pt]
+  {\\footnotesize\\color{nssgray} 提交编号：\\texttt{${runId}}}\\\\[8pt]
+  {\\color{nssaccent}\\rule{\\linewidth}{2pt}}
+\\end{center}
+\\vspace{6pt}
+
+\\section{实验目标}
+请根据 README.md 补充本实验目标。
+
+\\section{关键原理}
+请简述本实验涉及的核心原理与安全要点。
+
+\\section{实现要点（从抽象到代码的映射）}
+请补充关键思路、参数选择以及它们如何映射到代码实现。
+
+\\section{代码文件清单}
+\\begin{itemize}[leftmargin=1.4em]
+${fileItems}
+\\end{itemize}
+
+\\section{运行与验证}
+请粘贴 \\texttt{python solution.py} 的运行输出，并说明加解密一致、签名验签是否通过。
+% 示例：粘贴运行输出
+% \\begin{lstlisting}
+% (在此粘贴运行结果)
+% \\end{lstlisting}
+
+\\section{常见误用与修复}
+请列出实验中识别到的常见误用（如 ECB、复用 IV、无认证加密、MD5 签名、固定盐值），并说明危害与修复方式。
+
+\\section{结论与反思}
+请补充实验结论和个人反思。
+
+\\end{document}
+`
+}
+
+export interface ReportFilePaths {
+  dir: string
+  markdownPath: string
+  texPath: string
+}
+
+export async function writeReportWithFiles(input: {
+  dir: string
+  title: string
+  meta: EvidenceMeta
+  files: EvidenceFileInfo[]
+}): Promise<ReportFilePaths> {
+  const reportDir = join(input.dir, REPORT_DIR_NAME)
+  await mkdir(reportDir, { recursive: true })
+  const markdownPath = join(reportDir, "report.md")
+  const texPath = join(reportDir, "report.tex")
+  await writeFile(markdownPath, reportMarkdown(input), "utf-8")
+  await writeFile(texPath, reportTex(input), "utf-8")
+  return { dir: reportDir, markdownPath, texPath }
+}
+
+export function evidenceAppendixTex(result: SubmitEvidenceResult): string {
+  return `\n\\section{服务器证据签名}\n\\begin{itemize}[leftmargin=*]\n  \\item 提交编号：\\texttt{${escapeTex(result.run_id)}}\n  \\item 服务器提交时间：${escapeTex(result.server_submitted_at)}\n  \\item 证据哈希：\\texttt{${escapeTex(result.evidence_hash)}}\n  \\item 服务端签名：\\texttt{${escapeTex(result.signature)}}\n\\end{itemize}\n`
+}
+
+export function appendTexSignature(texContent: string, result: SubmitEvidenceResult): string {
+  const block = evidenceAppendixTex(result)
+  const stripped = texContent.replace(/\n\\section\{服务器证据签名\}[\s\S]*?(?=\n\\end\{document\})/, "")
+  return stripped.replace(/\n\\end\{document\}/, `${block}\n\\end{document}`)
 }
 
 export interface FinalizeResult {

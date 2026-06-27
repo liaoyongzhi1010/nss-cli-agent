@@ -41,6 +41,7 @@ import { initLesson, getLessonDir, shortenHome } from "@tui/component/lab-init"
 import {
   collectFileEvidence,
   evidenceAppendix,
+  appendTexSignature,
   loadEvidenceMeta,
   resolveStudentInfo,
   startEvidenceRun,
@@ -707,7 +708,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   const dir = getLessonDir(cwd, sel)
                   let meta = await loadEvidenceMeta(cwd, sel)
                   if (meta) {
-                    await DialogAlert.show(dialog, "已有报告", "该实验已生成过报告并签名定版，无需重复生成。可直接查看 report.md。")
+                    await DialogAlert.show(dialog, "已有报告", "该实验已生成过报告并签名定版，无需重复生成。可直接查看 report/ 目录下的 report.md 和 report.tex。")
                     return
                   }
                   const student = await resolveStudentInfo()
@@ -722,21 +723,21 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                   try {
                     meta = await startEvidenceRun(cwd, sel, student)
                     const files = await collectFileEvidence(dir)
-                    await writeReportWithFiles({ dir, title: sel.title, meta, files })
+                    const report = await writeReportWithFiles({ dir, title: sel.title, meta, files })
                     const qa = extractQATranscript()
                     const result = await finalizeEvidence(meta, qa)
-                    const { writeFile } = await import("fs/promises")
-                    const { join } = await import("path")
-                    const reportPath = join(dir, "report.md")
-                    const { readFile } = await import("fs/promises")
+                    const { writeFile, readFile } = await import("fs/promises")
                     let reportMd = ""
-                    try { reportMd = await readFile(reportPath, "utf-8") } catch {}
+                    try { reportMd = await readFile(report.markdownPath, "utf-8") } catch {}
                     const appendix = evidenceAppendix(result)
-                    await writeFile(reportPath, reportMd.replace(/\n## 服务器证据签名[\s\S]*$/, "") + appendix, "utf-8")
+                    await writeFile(report.markdownPath, reportMd.replace(/\n## 服务器证据签名[\s\S]*$/, "") + appendix, "utf-8")
+                    let reportTexContent = ""
+                    try { reportTexContent = await readFile(report.texPath, "utf-8") } catch {}
+                    await writeFile(report.texPath, appendTexSignature(reportTexContent, result), "utf-8")
                     await DialogAlert.show(
                       dialog,
                       "✅ 报告已生成并签名",
-                      `学生：${student.name}（${student.id}）\n报告：${shortenHome(dir)}/report.md（含 ${files.length} 个文件）\n实验过程对话：${qa ? "已记录并签名" : "未检测到对话(QA为空)"}\n签名：${result.signature.slice(0, 16)}...\n\n教师可在证据面板查看你的提交与实验过程。`,
+                      `学生：${student.name}（${student.id}）\n报告目录：${shortenHome(report.dir)}/（report.md + report.tex，含 ${files.length} 个文件）\n实验过程对话：${qa ? "已记录并签名" : "未检测到对话(QA为空)"}\n签名：${result.signature.slice(0, 16)}...\n\nreport.tex 可上传 Overleaf（编译器选 XeLaTeX）渲染为 PDF。\n教师可在证据面板查看你的提交与实验过程。`,
                     )
                   } catch (err) {
                     await DialogAlert.show(dialog, "报告生成失败", err instanceof Error ? err.message : String(err))
