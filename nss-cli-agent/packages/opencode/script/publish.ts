@@ -35,7 +35,7 @@ await $`mkdir -p ./dist/${pkg.name}`
 await $`mkdir -p ./dist/${pkg.name}/bin`
 await $`cp ./script/postinstall.mjs ./dist/${pkg.name}/postinstall.mjs`
 await Bun.file(`./dist/${pkg.name}/LICENSE`).write(await Bun.file("../../LICENSE").text())
-await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
+await Bun.file(`./dist/${pkg.name}/bin/nss-cli.exe`).write(
   [
     `echo "Error: ${pkg.name}'s postinstall script was not run." >&2`,
     'echo "" >&2',
@@ -56,7 +56,7 @@ await Bun.file(`./dist/${pkg.name}/package.json`).write(
     {
       name: pkg.name,
       bin: {
-        [pkg.name]: `./bin/${pkg.name}.exe`,
+        "nss-cli": `./bin/nss-cli.exe`,
       },
       scripts: {
         postinstall: "node ./postinstall.mjs",
