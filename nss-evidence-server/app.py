@@ -223,9 +223,9 @@ def login_page(request: Request, error: str = ""):
     <h1>教师端登录</h1>
     <p class="sub">证据查验控制台 · 请输入教师账号</p>
     <label>用户名</label>
-    <input name="username" autocomplete="username" autofocus placeholder="admin" />
+    <input name="username" autocomplete="username" autofocus placeholder="请输入教师用户名" />
     <label>密码</label>
-    <input name="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+    <input name="password" type="password" autocomplete="current-password" placeholder="请输入密码" />
     <button type="submit">登 录</button>
     __ERR__
   </form>
@@ -311,10 +311,16 @@ def homepage(request: Request):
     .badge-pending { background:rgba(148,163,184,.12); color:var(--muted); border:1px solid rgba(148,163,184,.25); }
     .badge-superseded { background:rgba(251,146,60,.12); color:#fb923c; border:1px solid rgba(251,146,60,.25); }
     .badge-deleted { background:rgba(251,113,133,.12); color:var(--red); border:1px solid rgba(251,113,133,.25); }
-    select { background:rgba(15,23,42,.88); border:1px solid var(--line); color:var(--text); padding:0 16px; border-radius:12px; outline:none; height:44px; cursor:pointer; min-width:130px; }
-    .btn-sm { font-size:12px; font-weight:700; padding:6px 14px; height:30px; border-radius:8px; background:rgba(34,211,238,.12); color:var(--cyan); border:1px solid rgba(34,211,238,.3); }
-    .btn-sm:hover { background:rgba(34,211,238,.22); }
+    select { appearance:none; -webkit-appearance:none; -moz-appearance:none; background-color:rgba(15,23,42,.88); background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 15px center; border:1px solid var(--line); color:var(--text); padding:0 40px 0 16px; border-radius:12px; outline:none; height:44px; cursor:pointer; min-width:130px; transition:border-color .15s, box-shadow .15s; }
+    select:hover { border-color:rgba(34,211,238,.45); }
+    select:focus { border-color:rgba(34,211,238,.6); box-shadow:0 0 0 3px rgba(34,211,238,.12); }
+    .btn-sm { display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; padding:0 14px; height:30px; border-radius:8px; background:rgba(34,211,238,.12); color:var(--cyan); border:1px solid rgba(34,211,238,.3); cursor:pointer; text-decoration:none; transition:background .15s, border-color .15s, transform .12s; }
+    .btn-sm:active { transform:scale(.96); }
+    .btn-sm:hover { background:rgba(34,211,238,.22); border-color:rgba(34,211,238,.5); }
     td .btn-sm + .btn-sm { margin-left:8px; }
+    .cell-actions { display:flex; gap:8px; align-items:center; }
+    .cell-actions .btn-sm { margin-left:0; }
+    .pdf-none { color:var(--muted); font-size:12px; }
     @media (max-width: 820px) { .hero { display:block; } .grid { grid-template-columns:1fr 1fr; } h1 { font-size:34px; } }
   </style>
 </head>
@@ -334,7 +340,7 @@ def homepage(request: Request):
     <section class="grid">
       <div class="card"><div class="label">提交总数</div><div class="metric" id="total">-</div></div>
       <div class="card"><div class="label">已验证</div><div class="metric" id="verified">-</div></div>
-      <div class="card"><div class="label">待提交</div><div class="metric" id="pending">-</div></div>
+      <div class="card"><div class="label">签名无效</div><div class="metric" id="invalid">-</div></div>
       <div class="card"><div class="label">学生数</div><div class="metric" id="students">-</div></div>
     </section>
     <section class="card">
@@ -343,10 +349,9 @@ def homepage(request: Request):
         <select id="exerciseFilter"><option value="">全部实验</option></select>
         <select id="statusFilter">
           <option value="">全部状态</option>
-          <option value="verified">已验证</option>
-          <option value="pending">待提交</option>
-          <option value="superseded">已取代</option>
-          <option value="deleted">已删除</option>
+          <option value="verified">✅ 已验证</option>
+          <option value="invalid">⚠️ 签名无效</option>
+          <option value="history">🔄 历史记录</option>
         </select>
         <button onclick="loadRuns()">刷新</button>
       </div>
@@ -357,17 +362,20 @@ def homepage(request: Request):
     const el = (id) => document.getElementById(id)
     let allRuns = []
     function statusKey(r) {
-      if (r.status === 'deleted') return 'deleted'
-      if (r.status === 'superseded') return 'superseded'
-      if (r.verify_status === 'verified') return 'verified'
+      if (r.status === 'deleted' || r.status === 'superseded') return 'history'
+      if (r.signature_valid === true) return 'verified'
+      if (r.signature_valid === false) return 'invalid'
       return 'pending'
     }
     function renderBadge(r) {
       const k = statusKey(r)
-      if (k === 'verified') return '<span class="badge badge-verified">✅已验证</span>'
-      if (k === 'superseded') return '<span class="badge badge-superseded">🔄已取代</span>'
-      if (k === 'deleted') return '<span class="badge badge-deleted">🗑已删除</span>'
-      return '<span class="badge badge-pending">📝待提交</span>'
+      if (k === 'verified') return '<span class="badge badge-verified">✅ 已验证</span>'
+      if (k === 'invalid') return '<span class="badge badge-deleted">⚠️ 签名无效</span>'
+      if (k === 'history') {
+        const t = r.status === 'deleted' ? '🗑 已删除' : '🔄 已取代'
+        return '<span class="badge badge-superseded">' + t + '</span>'
+      }
+      return '<span class="badge badge-pending">📝 待提交</span>'
     }
     function fmtTime(t) {
       if (!t) return '-'
@@ -397,15 +405,18 @@ def homepage(request: Request):
       const exFilter = el('exerciseFilter').value
       const stFilter = el('statusFilter').value
       const runs = allRuns.filter(r => {
+        const k = statusKey(r)
+        if (!stFilter && k === 'history') return false
         if (exFilter && r.exercise_id !== exFilter) return false
-        if (stFilter && statusKey(r) !== stFilter) return false
+        if (stFilter && k !== stFilter) return false
         if (q && ![r.run_id, r.student_id, r.student_name, r.exercise_id].some(v => String(v || '').toLowerCase().includes(q))) return false
         return true
       })
-      el('total').textContent = allRuns.length
-      el('verified').textContent = allRuns.filter(r => statusKey(r) === 'verified').length
-      el('pending').textContent = allRuns.filter(r => statusKey(r) === 'pending').length
-      el('students').textContent = new Set(allRuns.map(r => r.student_id)).size
+      const visible = allRuns.filter(r => statusKey(r) !== 'history')
+      el('total').textContent = visible.length
+      el('verified').textContent = visible.filter(r => statusKey(r) === 'verified').length
+      el('invalid').textContent = visible.filter(r => statusKey(r) === 'invalid').length
+      el('students').textContent = new Set(visible.map(r => r.student_id)).size
       if (!runs.length) { el('table').innerHTML = '<div class="empty">暂无符合条件的记录</div>'; return }
       el('table').innerHTML = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>实验</th><th>状态</th><th>提交编号</th><th>开始时间</th><th>提交时间</th><th>证据哈希 / 签名</th><th>报告(PDF)</th><th>操作</th></tr></thead><tbody>' + runs.map(r => `
         <tr>
@@ -417,24 +428,9 @@ def homepage(request: Request):
           <td>${fmtTime(r.server_started_at)}</td>
           <td>${fmtTime(r.server_submitted_at)}</td>
           <td><code title="${r.evidence_hash || ''}">${shortHash(r.evidence_hash)}</code><br><code title="${r.signature || ''}">${shortHash(r.signature)}</code></td>
-          <td>${r.pdf_path ? '<a class="btn-sm" style="display:inline-block;text-decoration:none" href="/runs/'+r.run_id+'/pdf" target="_blank">查看 PDF</a>' : '<span style="color:var(--muted);font-size:12px">未上传</span>'}</td>
-          <td>${r.signature ? '<button class="btn-sm" onclick="verifyRun(\\''+r.run_id+'\\', this)">验证</button>' : ''}<button class="btn-sm" onclick="showQA('${r.run_id}')">查看 QA</button></td>
+          <td>${r.pdf_path ? '<a class="btn-sm" href="/runs/'+r.run_id+'/pdf" target="_blank">查看 PDF</a>' : '<span class="pdf-none">未上传</span>'}</td>
+          <td><div class="cell-actions"><button class="btn-sm" onclick="showQA('${r.run_id}')">查看 QA</button></div></td>
         </tr>`).join('') + '</tbody></table></div>'
-    }
-    async function verifyRun(id, btn) {
-      btn.disabled = true
-      btn.textContent = '...'
-      try {
-        const res = await fetch('/runs/' + id + '/verify')
-        const data = await res.json()
-        btn.textContent = data.signature_valid ? '✅ 有效' : '❌ 无效'
-        btn.style.background = data.signature_valid ? 'rgba(52,211,153,.2)' : 'rgba(251,113,133,.2)'
-        btn.style.color = data.signature_valid ? 'var(--green)' : 'var(--red)'
-      } catch(e) {
-        btn.textContent = '❌ 错误'
-        btn.style.background = 'rgba(251,113,133,.2)'
-        btn.style.color = 'var(--red)'
-      }
     }
     async function showQA(id) {
       const res = await fetch('/runs/' + id)
@@ -499,7 +495,22 @@ def list_runs(
                 """,
                 (status,),
             ).fetchall()
-    return {"runs": [dict(row) for row in rows]}
+    runs = []
+    for row in rows:
+        run = dict(row)
+        if (
+            run.get("signature")
+            and run.get("evidence_hash")
+            and run.get("server_submitted_at")
+        ):
+            expected = sign(
+                run["run_id"], run["evidence_hash"], run["server_submitted_at"]
+            )
+            run["signature_valid"] = hmac.compare_digest(expected, run["signature"])
+        else:
+            run["signature_valid"] = None
+        runs.append(run)
+    return {"runs": runs}
 
 
 @app.post("/runs/start")
