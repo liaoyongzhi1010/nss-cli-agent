@@ -15,6 +15,15 @@ describe("labs.lessons", () => {
     }
   })
 
+  test("lesson title matches manifest title", () => {
+    for (const module of manifest.modules) {
+      for (const exercise of module.exercises) {
+        const script = getLessonScript(exercise.id)
+        expect(script?.title, `title mismatch for ${exercise.id}`).toBe(exercise.title)
+      }
+    }
+  })
+
   test("every lesson script is well-formed", () => {
     for (const [key, script] of Object.entries(lessonScripts)) {
       expect(script.exerciseID).toBe(key)

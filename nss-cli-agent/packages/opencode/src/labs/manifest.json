@@ -154,7 +154,7 @@
         {
           "id": "tee-basic",
           "tier": "basic",
-          "title": "环境部署与基本示例跑通"
+          "title": "环境部署与基本示例跑通（OP-TEE on QEMU）"
         },
         {
           "id": "tee-inter",
