@@ -21,10 +21,10 @@
 
 | 端 | 路径 | 鉴权 | 用途 |
 |----|------|------|------|
-| 教师端 | `/`、`/api/runs`、`/runs/{id}`、`/runs/{id}/verify`、`/runs/{id}/pdf`(下载)、`DELETE /runs/{id}` | **需登录**（见下） | 看表格、查 QA、验证签名、下载 PDF、删除 |
-| 学生端 | `/student`、`GET /api/student/runs`、`POST /student/pdf`、`GET /student/pdf`、`POST /runs/start`、`POST /runs/{id}/finalize` | 无需登录 | nsscli 自动上报；学生按学号查/预览/上传 PDF（以最新提交为准） |
+| 教师端 | `/`、`/api/runs`（含自动验签结果）、`/runs/{id}`、`/runs/{id}/verify`、`/runs/{id}/pdf`(下载)、`DELETE /runs/{id}` | **需登录**（见下） | 看表格、查 QA、下载 PDF、删除；签名由服务端自动校验 |
+| 学生端 | `/student`、`GET /api/student/runs`、`POST /student/pdf`、`GET /student/pdf`、`POST /runs/start`、`POST /runs/{id}/finalize` | 无需登录 | nss-cli 自动上报；学生按学号查/预览/上传 PDF（以最新提交为准） |
 
-**学生端不是网页**：学生用 `nsscli` 命令行做实验，证据由 nsscli 自动上报。`/student` 网页只用于学生**额外上传 PDF 报告**。
+**学生端不是网页**：学生用 `nss-cli` 命令行做实验，证据由 nss-cli 自动上报。`/student` 网页只用于学生**额外上传 PDF 报告**。
 
 ## 教师端登录
 
@@ -65,15 +65,16 @@ NSS_TEACHER_PASSWORD=nsscli2026 \
 
 ## 教师使用
 
-1. 浏览器打开 `http://<host>:8000/`，自动跳到登录页，输入 **admin / nsscli2026**。
-2. 表格按姓名/学号/实验/状态筛选，列含：开始时间、提交时间、证据哈希/签名、**报告(PDF)**、操作。
+1. 浏览器打开 `http://<host>/`（本地开发默认 `:8000`，生产部署在 `:80`），自动跳到登录页，输入 **admin / nsscli2026**。
+2. 表格按姓名/学号/实验/状态筛选，列含：开始时间、提交时间、证据哈希/签名、**报告(PDF)**、操作。状态徽章由服务端**自动验签**：✅ 已验证 / ⚠️ 签名无效 / 🔄 历史记录（被取代/删除，默认隐藏）。
 3. **报告(PDF)** 列：学生上传过则显示"查看 PDF"，否则显示"未上传"。
-4. **操作** 列：**验证**（校验签名）、**查看 QA**（弹窗显示学生与 AI 的完整实验对话，空对话显示"无对话记录"）。
+4. **操作** 列：**查看 QA**（弹窗显示学生与 AI 的完整实验对话，空对话显示"无对话记录"）。签名无需手动点击，打开页面即自动校验。
 5. 右上角 **退出登录** 清除会话。
 
 ## 学生使用
 
-- 做实验：在终端用 `nsscli`，`/lesson` → init 开始、report 生成并签名上传（自动采集 QA）。可反复重做，**每次以最新一次提交为准**，历史版本在教师端保留。
+- 安装：`npm install -g nss-cli-agent`，命令为 `nss-cli`（需 Node.js 18+）。
+- 做实验：在终端用 `nss-cli`，`/lesson` → init 开始、report 生成并签名上传（自动采集 QA）。可反复重做，**每次以最新一次提交为准**，历史版本在教师端保留。
 - report 会在实验目录生成 `report/` 文件夹，内含 `report.md` 和 `report.tex`（ctexart 模板，上传 Overleaf 后将 Compiler 设为 **XeLaTeX** 即可渲染中文 PDF）。
 - 交 / 看 PDF（可选）：浏览器打开 `http://<host>:8000/student`，输入**学号**点"查询我的实验"，列出做过的每个实验（以最新提交为准），可**预览当前 PDF** 或选文件**上传/替换**。无需填 run_id、无需登录。
 
@@ -84,10 +85,10 @@ NSS_TEACHER_PASSWORD=nsscli2026 \
 NSS_EVIDENCE_SECRET=demo NSS_EVIDENCE_DB=data/evidence.db NSS_EVIDENCE_PDF_DIR=data/pdf \
   .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 
-# 2. 学生侧：设学生信息后用 nsscli 做实验（在另一个终端）
+# 2. 学生侧：设学生信息后用 nss-cli 做实验（在另一个终端）
 export NSS_STUDENT_NAME="张三" NSS_STUDENT_ID="20240001"
-export NSS_EVIDENCE_SERVER="http://127.0.0.1:8000"   # nsscli 连哪个后端，默认即此值
-nsscli      # /lesson → init → 与 AI 逐步做实验 → /lesson → report
+export NSS_EVIDENCE_SERVER="http://127.0.0.1:8000"   # nss-cli 连哪个后端，默认即此值
+nss-cli      # /lesson → init → 与 AI 逐步做实验 → /lesson → report
 
 # 3. 教师侧：浏览器 http://127.0.0.1:8000/ 登录 admin/nsscli2026，看记录/QA/PDF
 
@@ -102,7 +103,7 @@ rm -f data/evidence.db && rm -rf data/pdf
 |----|----|
 | 教师端登录 | `admin` / `nsscli2026`（可用 `NSS_TEACHER_USER`/`NSS_TEACHER_PASSWORD` 覆盖） |
 | 学生信息 | 环境变量 `NSS_STUDENT_NAME` / `NSS_STUDENT_ID`（首次后存入 `~/.config/nss-cli/student.json`） |
-| nsscli 连后端 | 环境变量 `NSS_EVIDENCE_SERVER`，默认 `http://127.0.0.1:8000` |
+| nss-cli 连后端 | 环境变量 `NSS_EVIDENCE_SERVER`，默认 `http://127.0.0.1:8000` |
 
 ## 部署清单（正式给学生用前必做）
 
@@ -118,12 +119,12 @@ rm -f data/evidence.db && rm -rf data/pdf
 ## 关键 API
 
 ```bash
-# 开始一次实验（nsscli 自动调用）
+# 开始一次实验（nss-cli 自动调用）
 curl -s -X POST http://127.0.0.1:8000/runs/start \
   -H 'content-type: application/json' \
-  -d '{"student_name":"张三","student_id":"20240001","exercise_id":"01-crypto-basic","computer":{}}'
+  -d '{"student_name":"张三","student_id":"20240001","exercise_id":"crypto-basic","computer":{}}'
 
-# 定版：上传 QA + 签名（nsscli 自动调用）
+# 定版：上传 QA + 签名（nss-cli 自动调用）
 curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/finalize \
   -H 'content-type: application/json' \
   -d '{"qa_transcript":"## 学生\n...\n\n## AI\n..."}'

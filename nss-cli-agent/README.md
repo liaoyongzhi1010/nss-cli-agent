@@ -1,148 +1,105 @@
 # NSS CLI Agent
 
-基于 [opencode](https://github.com/anomalyco/opencode) 二次开发的 CLI Agent 工具，面向**可信执行环境（TEE）开发部署**与**《计算机安全导论》课程实验教学**两大场景。
+基于 [opencode](https://github.com/anomalyco/opencode) 二次开发的 CLI Agent，面向**《计算机安全导论》课程实验教学 + 防作弊**场景。学生用命令行做实验，AI 逐步引导教学；实验过程（师生 QA 对话）自动上报证据后端并签名定版，教师在控制台查验。
 
-## 定位
+产品定位：**鼓励学生用 AI 做实验，但要求真正逐步参与**。防的是"一句话甩给 AI 做完"，不是防用 AI。
 
-`nss-cli-agent` 是一个发布到 npm 的独立 CLI 工具，学生或开发者通过 `npx nss-cli-agent` 或全局安装后直接使用。内置专用 skill 和 tool，开箱即用，无需额外配置。
+## 组成
 
-## 两大核心场景
+| 组件 | 说明 | 目录 |
+|------|------|------|
+| **CLI（nss-cli）** | 学生用的命令行工具，已发布到 npm | `packages/opencode` |
+| **证据后端** | 记录实验证据、QA 签名、教师/学生双端 | [`../nss-evidence-server`](../nss-evidence-server) |
 
-### 场景一：可信执行环境（TEE）开发与部署
-
-面向 TEE/机密计算领域的开发者和研究人员，提供：
-
-- **板卡部署辅助**：Keystone on VisionFive 2、OP-TEE on QEMU 等 TEE 环境的一键搭建与部署引导
-- **环境自检与多路径构建**：识别宿主机 OS/CPU/权限/虚拟化能力，自动选择最优构建路径（容器优先，降级到源码/QEMU）
-- **交叉编译工具链管理**：自动处理 RISC-V / ARM 交叉编译依赖
-- **串口调试与验证**：集成串口连接、日志捕获、运行时验证脚本
-- **多板卡抽象**：后续可扩展支持更多 TEE 硬件平台
-
-### 场景二：《计算机安全导论》课程实验
-
-面向西安电子科技大学《计算机安全导论》（CS205202）课程的本科生，提供：
-
-- **实验环境一键搭建**：学生在自己的笔记本上运行 `nss lab init`，自动完成环境检测、依赖安装、容器/QEMU 拉起
-- **分层实验任务**：每章实验按"基础—进阶—挑战"三层递进，学生按自身水平选择
-- **八类实验模块**：
-  1. 密码学基础（含 PKI/TLS）
-  2. Web 安全
-  3. 操作系统安全
-  4. 数据库安全
-  5. 软件安全
-  6. 网络安全
-  7. 可信计算（TPM/TCM）
-  8. 机密计算（TEE：OP-TEE on QEMU）
-- **自动验证与证据采集**：`nss lab verify` 执行测试用例、采集日志/抓包/验证输出
-- **结构化报告生成**：`nss lab report` 生成报告草稿（证据索引 + 模板），学生补充理解性说明后提交
-- **场景变体**：支持按参数/拓扑/对抗者模型生成实验变体，避免答案复用
-
-## 内置能力
-
-### 内置 Skills
-
-| Skill | 用途 |
-|-------|------|
-| `tee-deploy` | TEE 环境部署（Keystone/OP-TEE/TrustZone），含环境自检、构建、刷写、验证全流程 |
-| `lab-crypto` | 密码学基础实验引导（对称/公钥/哈希/PKI/TLS） |
-| `lab-web-sec` | Web 安全实验（SQLi/XSS/CSRF 复现与防护） |
-| `lab-os-sec` | 操作系统安全实验（Set-UID/环境变量注入/TOCTOU） |
-| `lab-db-sec` | 数据库安全实验（注入/权限/审计） |
-| `lab-software-sec` | 软件安全实验（缓冲区溢出/格式化字符串/ASLR/Canary/NX） |
-| `lab-network-sec` | 网络安全实验（嗅探/伪造/DNS/TCP/防火墙/VPN） |
-| `lab-tpm` | 可信计算实验（PCR/度量/密封解封/远程证明） |
-| `lab-tee` | 机密计算实验（OP-TEE 环境/CA-TA 链路/共享内存/敏感数据生命周期） |
-| `env-doctor` | 环境诊断与修复（失败原因分类 + 修复策略库） |
-
-### 内置 Tools
-
-| Tool | 用途 |
-|------|------|
-| `env-check` | 检测 OS/CPU/架构/权限/虚拟化/Docker/QEMU 等环境信息 |
-| `lab-bundle` | 实验包管理（拉取/初始化/更新实验包） |
-| `lab-verify` | 执行自动化验收（测试用例 + 证据采集 + 规则检查） |
-| `lab-report` | 生成结构化实验报告草稿 |
-| `serial-connect` | 串口连接管理（用于板卡调试） |
-| `container-run` | 容器化实验拓扑启动（client/server/attacker 多节点） |
-| `evidence-collect` | 证据归档（日志/抓包/截图/验证输出统一整理） |
-
-## CLI 命令设计
+## 快速开始（学生）
 
 ```bash
-# 通用
-nss doctor              # 环境自检
-nss init                # 初始化项目/实验工作目录
+# 1. 安装（跨平台：Windows / macOS / Linux）
+npm install -g nss-cli-agent
 
-# TEE 部署场景
-nss tee deploy          # 引导式 TEE 部署（交互选择板卡/平台）
-nss tee build           # 构建 TEE 固件/镜像
-nss tee flash           # 刷写到目标设备
-nss tee verify          # 运行时验证（hello enclave 等）
+# 2. 首次配置学生信息（自动记住，之后无需再设）
+export NSS_STUDENT_NAME="张三"
+export NSS_STUDENT_ID="20240001"
+export NSS_EVIDENCE_SERVER="http://8.152.219.229"   # 证据后端地址
 
-# 课程实验场景
-nss lab list            # 列出可用实验模块与任务
-nss lab init <module>   # 初始化某个实验（拉取实验包、搭建环境）
-nss lab run             # 运行当前实验
-nss lab verify          # 执行验收（测试+证据采集）
-nss lab report          # 生成报告草稿
-nss lab variant         # 生成当前实验的变体配置
-
-# 交互式 Agent 模式（继承 opencode 的 TUI）
-nss                     # 进入交互式 Agent，可自然语言对话完成上述所有操作
+# 3. 启动
+nss-cli
 ```
 
-## 技术架构
+> 命令是 `nss-cli`（不是 `nsscli`）。需要 Node.js 18+。
 
+## 端到端流程
+
+### 学生侧：做实验 → 生成报告
+
+1. 启动 `nss-cli`，输入 `/lesson` 打开实验菜单
+2. **init**：选择实验（如 `crypto-basic`），系统创建实验目录
+3. `cd` 进实验目录，重新启动 `nss-cli`，直接和 AI 对话做实验
+   - AI 一次只走一步，每步抛出问题或动手要求后**停下等你回应**
+   - 第 3 步 AI 会在实验目录**真实写出 `solution.py`** 等代码文件
+4. 做完后 `/lesson` → **report**：自动采集代码 → 提取 QA 对话 → 上报后端签名 → 生成 `report/` 文件夹（`report.md` + `report.tex`）
+5. （可选）`report.tex` 上传 [Overleaf](https://www.overleaf.com)（编译器选 **XeLaTeX**）渲染 PDF，再到 `http://<后端>/student` 按学号上传
+
+### 教师侧：查验证据
+
+1. 浏览器打开后端地址（如 `http://8.152.219.229/`）→ 登录（默认 `admin` / `nsscli2026`）
+2. 表格按姓名/学号/实验/状态筛选，**签名自动校验**（✅ 已验证 / ⚠️ 签名无效）
+3. 点「查看 QA」看学生与 AI 的完整实验对话，判断是否认真参与
+4. 点「查看 PDF」下载学生上传的报告
+
+## 验证模型（两层）
+
+1. **技术层（哈希 + 签名）**：`evidence_hash = SHA256(qa_transcript)`，`signature = HMAC-SHA256(密钥, "run_id:evidence_hash:提交时间")`
+   - 只锁 **QA 对话**，不锁代码文件（允许用 AI 生成代码，重点是过程）
+   - 保证 QA 提交后不可篡改
+2. **人工层（教师看 QA）**：技术层无法判断 QA 是认真做还是水的——这要教师在面板看对话内容判断
+
+> PDF 报告仅供教师阅读，**不参与任何验证逻辑**。
+
+## 实验清单
+
+8 个模块 × 3 难度（基础 / 进阶 / 挑战）= 24 个实验，定义见 [`src/labs/manifest.json`](packages/opencode/src/labs/manifest.json)，每个实验的强互动教学脚本见 [`src/labs/lessons.ts`](packages/opencode/src/labs/lessons.ts)。
+
+| 模块 | 基础 | 进阶 | 挑战 |
+|------|------|------|------|
+| 密码学（含 PKI/TLS） | crypto-basic | crypto-inter | crypto-adv |
+| Web 安全 | web-sec-basic | web-sec-inter | web-sec-adv |
+| 操作系统安全 | os-sec-basic | os-sec-inter | os-sec-adv |
+| 数据库安全 | db-sec-basic | db-sec-inter | db-sec-adv |
+| 软件安全 | sw-sec-basic | sw-sec-inter | sw-sec-adv |
+| 网络安全 | net-sec-basic | net-sec-inter | net-sec-adv |
+| 可信计算（TPM/TCM） | tpm-basic | tpm-inter | tpm-adv |
+| 机密计算（TEE：OP-TEE on QEMU） | tee-basic | tee-inter | tee-adv |
+
+## 环境变量
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `NSS_STUDENT_NAME` | 学生姓名 | 无（首次必设） |
+| `NSS_STUDENT_ID` | 学生学号 | 无（首次必设） |
+| `NSS_EVIDENCE_SERVER` | 证据后端地址 | `http://127.0.0.1:8000` |
+
+首次设置后会存入 `~/.config/nss-cli/student.json`，之后无需再设。
+
+## 开发
+
+```bash
+cd packages/opencode
+bun install
+bun dev                              # 本地启动交互式 TUI
+
+# 测试
+bun test test/labs/lessons.test.ts   # 实验脚本测试
 ```
-nss-cli-agent (npm package)
-├── 定制 System Prompt（面向 TEE + 安全课程）
-├── 内置 Skills（tee-deploy, lab-*, env-doctor）
-├── 内置 Tools（env-check, lab-bundle, lab-verify, ...）
-├── 实验包注册表（Bundle Registry，可本地/远程）
-├── 验证器（Verifier，测试用例 + 规则 + 证据归档）
-└── opencode core（LLM 调度、TUI、MCP、文件操作等底座能力）
-```
+
+构建与发布见 [`packages/opencode/script/build.ts`](packages/opencode/script/build.ts) 和 `publish.ts`。构建产物是主包 `nss-cli-agent` + 12 个平台子包（macOS/Linux/Windows × arm64/x64 及 baseline/musl 变体），学生 `npm i -g nss-cli-agent` 后 postinstall 按平台自动选装对应子包。
 
 ## 与 opencode 的关系
 
-- **底座**：复用 opencode 的 LLM 调度、TUI 交互、文件操作、bash 执行、MCP 协议等核心能力
-- **定制**：替换 system prompt 为面向安全课程与 TEE 部署的专用 PE
-- **扩展**：新增上述 skill 和 tool，打包进 npm 发布产物
-- **品牌**：CLI 命令为 `nss`，包名为 `nss-cli-agent`
-
-## 开发计划
-
-| 阶段 | 时间 | 目标 |
-|------|------|------|
-| MVP | Q1 | CLI 骨架 + env-check + tee-deploy skill + 4 个基础实验模块 |
-| v1.0 | Q2 | 8 类实验全覆盖基础层 + 验证器 + 报告生成 |
-| v1.5 | Q3 | 进阶/挑战层任务 + 变体生成 + 课堂试点准备 |
-| v2.0 | Q4 | TPM/OP-TEE 实验落地 + 数据闭环 + npm 正式发布 |
-
-## 模型支持
-
-继承 opencode 的多模型支持，同时内置推荐配置：
-- 默认推荐：玄知密码学大模型（可信计算子领域）
-- 备选：Claude / GPT-4 / DeepSeek 等通用模型
-
-## 安装与使用
-
-```bash
-# 全局安装
-npm install -g nss-cli-agent
-
-# 或直接使用
-npx nss-cli-agent
-
-# 进入交互模式
-nss
-
-# 快速开始某个实验
-nss lab init crypto-basic
-```
+- **底座**：复用 opencode 的 LLM 调度、TUI 交互、文件操作、bash 执行等核心能力
+- **定制**：面向课程实验的引导式教学（`src/labs/lessons.ts`）+ 证据采集签名（`src/cli/cmd/tui/component/lab-evidence.ts`）
+- **品牌**：命令为 `nss-cli`，包名为 `nss-cli-agent`
 
 ## 项目背景
 
-本工具是西安电子科技大学"基于玄知大模型的《计算机安全导论》实验教学智能体与工具链建设"教改项目（AI 赋能课程改革，重点项目，2026）的核心交付物之一。
-
-团队：卢笛（主持）、郑乐乐（VS Code 插件）、穆旭彤（CLI 与工具链）、张涛（架构设计）、程珂（实验包与验证器）
+西安电子科技大学"基于玄知大模型的《计算机安全导论》实验教学智能体与工具链建设"教改项目（AI 赋能课程改革，重点项目，2026）交付物之一。
