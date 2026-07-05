@@ -83,6 +83,7 @@ class StartRunRequest(BaseModel):
     student_id: str = Field(min_length=1)
     exercise_id: str = Field(min_length=1)
     computer: Dict[str, Any] = Field(default_factory=dict)
+    client_started_at: Optional[str] = None
 
 
 class EvidenceFile(BaseModel):
@@ -306,6 +307,20 @@ def homepage(request: Request):
     .modal-close:hover { color:#fff; border-color:var(--cyan); }
     .modal-body { padding:18px 22px; overflow:auto; }
     .modal-body pre { white-space:pre-wrap; word-break:break-word; margin:0; font-size:13px; line-height:1.6; }
+    .qa-chat { display:flex; flex-direction:column; gap:14px; }
+    .qa-turn { display:flex; flex-direction:column; max-width:88%; }
+    .qa-turn.qa-student { align-self:flex-end; align-items:flex-end; }
+    .qa-turn.qa-ai { align-self:flex-start; align-items:flex-start; }
+    .qa-who { font-size:11px; font-weight:700; margin-bottom:5px; letter-spacing:.04em; }
+    .qa-student .qa-who { color:var(--cyan); }
+    .qa-ai .qa-who { color:var(--violet); }
+    .qa-bubble { padding:11px 15px; border-radius:14px; font-size:13.5px; line-height:1.7; word-break:break-word; }
+    .qa-student .qa-bubble { background:rgba(34,211,238,.12); border:1px solid rgba(34,211,238,.3); border-bottom-right-radius:4px; }
+    .qa-ai .qa-bubble { background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.3); border-bottom-left-radius:4px; }
+    .qa-line { min-height:2px; }
+    .qa-gap { height:8px; }
+    .qa-code { background:rgba(2,6,23,.7); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:6px 0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; white-space:pre-wrap; word-break:break-word; color:#a5f3fc; }
+    .qa-inline { background:rgba(2,6,23,.6); padding:1px 6px; border-radius:5px; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; color:#a5f3fc; }
     .badge { display:inline-block; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:700; }
     .badge-verified { background:rgba(52,211,153,.15); color:var(--green); border:1px solid rgba(52,211,153,.3); }
     .badge-pending { background:rgba(148,163,184,.12); color:var(--muted); border:1px solid rgba(148,163,184,.25); }
@@ -432,15 +447,49 @@ def homepage(request: Request):
           <td><div class="cell-actions"><button class="btn-sm" onclick="showQA('${r.run_id}')">查看 QA</button></div></td>
         </tr>`).join('') + '</tbody></table></div>'
     }
+    function renderMarkdown(text, esc) {
+      const lines = String(text || '').split('\\n')
+      let html = ''
+      let inCode = false
+      let codeBuf = []
+      for (const line of lines) {
+        if (line.trim().startsWith('```')) {
+          if (inCode) { html += '<pre class="qa-code">' + esc(codeBuf.join('\\n')) + '</pre>'; codeBuf = []; inCode = false }
+          else { inCode = true }
+          continue
+        }
+        if (inCode) { codeBuf.push(line); continue }
+        let h = esc(line)
+        h = h.replace(/`([^`]+)`/g, '<code class="qa-inline">$1</code>')
+        h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+        html += h ? ('<div class="qa-line">' + h + '</div>') : '<div class="qa-gap"></div>'
+      }
+      if (inCode && codeBuf.length) html += '<pre class="qa-code">' + esc(codeBuf.join('\\n')) + '</pre>'
+      return html
+    }
+    function renderQA(qa, esc) {
+      const parts = qa.split(/^##\\s+/m).map(s => s.trim()).filter(Boolean)
+      if (!parts.length) return '<pre>' + esc(qa) + '</pre>'
+      let html = '<div class="qa-chat">'
+      for (const part of parts) {
+        const nl = part.indexOf('\\n')
+        const role = (nl === -1 ? part : part.slice(0, nl)).trim()
+        const content = nl === -1 ? '' : part.slice(nl + 1).trim()
+        const isStudent = role.includes('学生')
+        const cls = isStudent ? 'qa-student' : 'qa-ai'
+        const who = isStudent ? '学生' : 'AI'
+        html += '<div class="qa-turn ' + cls + '"><div class="qa-who">' + who + '</div><div class="qa-bubble">' + renderMarkdown(content, esc) + '</div></div>'
+      }
+      html += '</div>'
+      return html
+    }
     async function showQA(id) {
       const res = await fetch('/runs/' + id)
       if (res.status === 401) { window.location.href = '/login'; return }
       const run = await res.json()
       const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))
       const qa = (run.qa_transcript || '').trim()
-      const body = qa
-        ? '<pre>' + esc(qa) + '</pre>'
-        : '<div class="empty">无对话记录</div>'
+      const body = qa ? renderQA(qa, esc) : '<div class="empty">无对话记录</div>'
       document.getElementById('modalTitle').textContent =
         '实验过程对话 — ' + run.student_name + '（' + run.student_id + '） · ' + run.exercise_id
       document.getElementById('modalBody').innerHTML = body
@@ -516,7 +565,7 @@ def list_runs(
 @app.post("/runs/start")
 def start_run(payload: StartRunRequest) -> Dict[str, str]:
     run_id = "run_" + uuid.uuid4().hex
-    server_started_at = now_iso()
+    server_started_at = payload.client_started_at or now_iso()
     with connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
@@ -1011,11 +1060,20 @@ async def upload_pdf(run_id: str, file: UploadFile = File(...)) -> Dict[str, str
 def download_pdf(run_id: str, _: None = Depends(require_teacher)) -> FileResponse:
     with connect() as conn:
         row = conn.execute(
-            "SELECT pdf_path FROM runs WHERE run_id = ?", (run_id,)
+            "SELECT pdf_path, student_name, student_id, exercise_id FROM runs WHERE run_id = ?",
+            (run_id,),
         ).fetchone()
     if row is None or not row["pdf_path"]:
         raise HTTPException(status_code=404, detail="该提交没有 PDF")
     path = Path(row["pdf_path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="PDF 文件已丢失")
-    return FileResponse(path, media_type="application/pdf", filename=f"{run_id}.pdf")
+
+    def safe(s: str) -> str:
+        s = (s or "").strip()
+        for ch in '/\\:*?"<>|':
+            s = s.replace(ch, "_")
+        return s or "unknown"
+
+    download_name = f"{safe(row['student_name'])}-{safe(row['student_id'])}-{safe(row['exercise_id'])}.pdf"
+    return FileResponse(path, media_type="application/pdf", filename=download_name)

@@ -84,5 +84,19 @@ export async function initLesson(cwd: string, lesson: SelectedLesson): Promise<I
   await mkdir(dir, { recursive: true })
   const content = labReadmes[lesson.exerciseID] ?? fallbackReadme(lesson)
   await writeFile(readmePath, content, "utf-8")
+  const nssDir = join(dir, ".nss")
+  await mkdir(nssDir, { recursive: true })
+  await writeFile(join(nssDir, "started.json"), JSON.stringify({ startedAt: new Date().toISOString() }, null, 2), "utf-8")
   return { dir, created: true }
+}
+
+export async function loadLessonStartedAt(cwd: string, lesson: SelectedLesson): Promise<string | undefined> {
+  try {
+    const { readFile } = await import("fs/promises")
+    const raw = await readFile(join(getLessonDir(cwd, lesson), ".nss", "started.json"), "utf-8")
+    const parsed = JSON.parse(raw) as { startedAt?: string }
+    return parsed.startedAt
+  } catch {
+    return undefined
+  }
 }

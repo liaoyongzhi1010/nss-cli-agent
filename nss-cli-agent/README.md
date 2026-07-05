@@ -77,7 +77,7 @@ nss-cli
 |------|------|------|
 | `NSS_STUDENT_NAME` | 学生姓名 | 无（首次必设） |
 | `NSS_STUDENT_ID` | 学生学号 | 无（首次必设） |
-| `NSS_EVIDENCE_SERVER` | 证据后端地址 | `http://127.0.0.1:8000` |
+| `NSS_EVIDENCE_SERVER` | 证据后端地址（可覆盖默认线上后端） | `http://8.152.219.229` |
 
 首次设置后会存入 `~/.config/nss-cli/student.json`，之后无需再设。
 

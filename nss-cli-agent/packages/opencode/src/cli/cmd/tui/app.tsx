@@ -37,7 +37,7 @@ import { DialogModel } from "@tui/component/dialog-model"
 import { DialogLesson } from "@tui/component/dialog-lesson"
 import { DialogLessonActions } from "@tui/component/dialog-lesson-actions"
 import { useLesson } from "@tui/component/use-lesson"
-import { initLesson, getLessonDir, shortenHome } from "@tui/component/lab-init"
+import { initLesson, getLessonDir, shortenHome, loadLessonStartedAt } from "@tui/component/lab-init"
 import {
   collectFileEvidence,
   evidenceAppendix,
@@ -721,7 +721,8 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                     return
                   }
                   try {
-                    meta = await startEvidenceRun(cwd, sel, student)
+                    const startedAt = await loadLessonStartedAt(cwd, sel)
+                    meta = await startEvidenceRun(cwd, sel, student, startedAt)
                     const files = await collectFileEvidence(dir)
                     const report = await writeReportWithFiles({ dir, title: sel.title, meta, files })
                     const qa = extractQATranscript()

@@ -33,7 +33,7 @@ export interface SubmitEvidenceResult {
 }
 
 export function evidenceServerURL() {
-  return process.env.NSS_EVIDENCE_SERVER || "http://127.0.0.1:8000"
+  return process.env.NSS_EVIDENCE_SERVER || "http://8.152.219.229"
 }
 
 export function parseStudentInfo(value: string): StudentInfo | null {
@@ -94,7 +94,12 @@ export async function collectComputerInfo() {
   }
 }
 
-export async function startEvidenceRun(cwd: string, lesson: SelectedLesson, student: StudentInfo): Promise<EvidenceMeta> {
+export async function startEvidenceRun(
+  cwd: string,
+  lesson: SelectedLesson,
+  student: StudentInfo,
+  clientStartedAt?: string,
+): Promise<EvidenceMeta> {
   const server = evidenceServerURL()
   let response: Response
   try {
@@ -106,6 +111,7 @@ export async function startEvidenceRun(cwd: string, lesson: SelectedLesson, stud
         student_id: student.id,
         exercise_id: lesson.exerciseID,
         computer: await collectComputerInfo(),
+        client_started_at: clientStartedAt,
       }),
     })
   } catch {

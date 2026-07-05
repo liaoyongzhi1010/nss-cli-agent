@@ -103,7 +103,7 @@ rm -f data/evidence.db && rm -rf data/pdf
 |----|----|
 | 教师端登录 | `admin` / `nsscli2026`（可用 `NSS_TEACHER_USER`/`NSS_TEACHER_PASSWORD` 覆盖） |
 | 学生信息 | 环境变量 `NSS_STUDENT_NAME` / `NSS_STUDENT_ID`（首次后存入 `~/.config/nss-cli/student.json`） |
-| nss-cli 连后端 | 环境变量 `NSS_EVIDENCE_SERVER`，默认 `http://127.0.0.1:8000` |
+| nss-cli 连后端 | 环境变量 `NSS_EVIDENCE_SERVER`，默认线上后端 `http://8.152.219.229`；本地联调时可覆盖为 `http://127.0.0.1:8000` |
 
 ## 部署清单（正式给学生用前必做）
 
@@ -113,7 +113,7 @@ rm -f data/evidence.db && rm -rf data/pdf
    NSS_TEACHER_PASSWORD=<你的强密码>
    ```
 2. **套 HTTPS**：公网部署用 nginx/caddy 反代加证书，否则登录密码与 Cookie 明文暴露。
-3. **学生端指向真实后端**：让学生设置 `NSS_EVIDENCE_SERVER=https://<你的域名>`（否则默认连本地 127.0.0.1，连不上你的服务器）。
+3. **确认学生端后端地址**：当前 `nss-cli` 默认指向 `http://8.152.219.229`；如迁移服务器或改域名，再让学生设置 `NSS_EVIDENCE_SERVER=https://<你的域名>` 覆盖默认值。
 4. **持久化数据**：确保 `NSS_EVIDENCE_DB` 与 `NSS_EVIDENCE_PDF_DIR` 指向持久磁盘并做备份。
 
 ## 关键 API
